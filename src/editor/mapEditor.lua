@@ -78,9 +78,9 @@ function MapEditor:new()
     self.selectedMapIndex = 1
     
     -- Create fonts
-    self.titleFont = love.graphics.newFont(18)
-    self.buttonFont = love.graphics.newFont(14)
-    self.labelFont = love.graphics.newFont(12)
+    self.titleFont = love.graphics.newFont("assets/fonts/Tomorrow/Tomorrow-Bold.ttf", 18)
+    self.buttonFont = love.graphics.newFont("assets/fonts/Tomorrow/Tomorrow-Medium.ttf", 14)
+    self.labelFont = love.graphics.newFont("assets/fonts/Tomorrow/Tomorrow-Regular.ttf", 12)
     
     return self
 end

@@ -21,7 +21,7 @@ function Couch:new(grid, gridX, gridY)
     self.color = {0.93, 0.93, 0.93, 1} -- #eeeeee (monochrome)
     
     -- Load the Megrim font if needed
-    self.font = love.graphics.newFont("assets/fonts/Megrim.ttf", 14)
+    self.font = love.graphics.newFont("assets/fonts/Tomorrow/Tomorrow-Regular.ttf", 14)
     
     return self
 end

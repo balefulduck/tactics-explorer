@@ -21,8 +21,8 @@ function MapBrowser:new()
     self.y = (love.graphics.getHeight() - self.height) / 2
     
     -- Create fonts
-    self.titleFont = love.graphics.newFont(18)
-    self.itemFont = love.graphics.newFont(14)
+    self.titleFont = love.graphics.newFont("assets/fonts/Tomorrow/Tomorrow-Bold.ttf", 18)
+    self.itemFont = love.graphics.newFont("assets/fonts/Tomorrow/Tomorrow-Regular.ttf", 14)
     
     return self
 end

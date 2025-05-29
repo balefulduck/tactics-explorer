@@ -28,12 +28,11 @@ function InfoScreen:new()
     self.contentWidth = 350 -- Width of the text content area
     self.imageWidth = 500 -- Width of the image area (increased 3x from original 200)
     
-    -- Load fonts - using default font since Offside download failed
-    local defaultFont = love.graphics.getFont()
-    self.titleFont = love.graphics.newFont(24) -- Bold for titles (simulated with size)
-    self.headerFont = love.graphics.newFont(20)
-    self.bodyFont = love.graphics.newFont(16)
-    self.flavorFont = love.graphics.newFont(18) -- Italic for flavor text (will simulate with color)
+    -- Load Tomorrow fonts
+    self.titleFont = love.graphics.newFont("assets/fonts/Tomorrow/Tomorrow-Bold.ttf", 24)
+    self.headerFont = love.graphics.newFont("assets/fonts/Tomorrow/Tomorrow-SemiBold.ttf", 20)
+    self.bodyFont = love.graphics.newFont("assets/fonts/Tomorrow/Tomorrow-Regular.ttf", 16)
+    self.flavorFont = love.graphics.newFont("assets/fonts/Tomorrow/Tomorrow-Italic.ttf", 18)
     
     -- Load image
     self.image = love.graphics.newImage("assets/images/bb.jpg")

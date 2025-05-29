@@ -2,12 +2,12 @@
 function love.conf(t)
     t.title = "Tactics Explorer"        -- The title of the window
     t.version = "11.3"                  -- The LÖVE version this game was made for
-    t.window.width = 1920               -- Window width (increased to 1080p)
-    t.window.height = 1080              -- Window height (increased to 1080p)
+    t.window.width = 1366               -- Window width (changed to 1366x768)
+    t.window.height = 768               -- Window height (changed to 1366x768)
     
     t.window.resizable = true           -- Let the window be user-resizable
-    t.window.minwidth = 1280            -- Minimum window width (increased)
-    t.window.minheight = 800            -- Minimum window height (increased)
+    t.window.minwidth = 1024            -- Minimum window width (decreased)
+    t.window.minheight = 600            -- Minimum window height (decreased)
     
     t.console = true                    -- Attach a console (Windows only)
     
