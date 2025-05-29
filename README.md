@@ -30,9 +30,23 @@ tactics-explorer/
 
 ## Controls
 
+### Game Controls
 - **WASD** or **Arrow Keys**: Move the player
+- **E** or **Space**: Interact with objects
+- **Shift**: Show information about adjacent objects
 - **F1**: Toggle debug grid
+- **F2**: Toggle map editor
 - **ESC**: Quit the game
+
+### Map Editor Controls
+- **F2**: Toggle between game and editor mode
+- **G**: Toggle grid visibility
+- **U**: Toggle UI panel visibility
+- **1**: Select tile placement tool
+- **2**: Select entity placement tool
+- **3**: Select eraser tool
+- **Ctrl+S**: Save map
+- **Ctrl+L**: Load map
 
 ## Requirements
 

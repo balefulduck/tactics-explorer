@@ -7,6 +7,7 @@ local Player = require("src.core.player")
 local Furniture = require("src.core.furniture")
 local Camera = require("src.systems.camera")
 local UI = require("src.systems.ui")
+local EditorMode = require("src.editor.editorMode")
 
 local Game = {}
 Game.__index = Game
@@ -20,7 +21,7 @@ function Game:new()
     self.tileSize = 64  -- Size of each grid tile in pixels
     
     -- Game state
-    self.state = "playing"  -- playing, paused, menu, etc.
+    self.state = "playing"  -- playing, paused, menu, editor, etc.
     self.debug = false
     
     return self
@@ -52,6 +53,9 @@ function Game:load()
     
     -- Center camera on player
     self.camera:setTarget(self.player)
+    
+    -- Initialize editor mode
+    self.editorMode = EditorMode:new(self)
 end
 
 function Game:setupRoom()
@@ -98,6 +102,9 @@ function Game:update(dt)
         
         -- Update UI
         self.ui:update(dt)
+    elseif self.state == "editor" then
+        -- Update editor mode
+        self.editorMode:update(dt)
     end
 end
 
@@ -105,28 +112,30 @@ function Game:draw()
     -- Draw background pattern (not affected by camera)
     self:drawBackground()
     
-    -- Begin camera transformation
-    self.camera:set()
-    
-    -- Draw board frame
-    self:drawBoardFrame()
-    
-    -- Draw the map (which draws all tiles and entities)
-    self.currentMap:draw()
-    
-    -- Draw player (on top of other entities)
-    self.player:draw()
-    
-    -- Draw grid (for debugging)
-    if self.debug then
-        self.grid:draw()
+    if self.state == "playing" then
+        -- Set up camera transformation
+        self.camera:set()
+        
+        -- Draw map (which draws all tiles and entities)
+        self.currentMap:draw()
+        
+        -- Draw player
+        self.player:draw()
+        
+        -- Reset camera
+        self.camera:unset()
+        
+        -- Draw UI (after camera reset so it's in screen space)
+        self.ui:draw()
+        
+        -- Draw debug info if enabled
+        if self.debug then
+            self:drawDebugInfo()
+        end
+    elseif self.state == "editor" then
+        -- Draw editor mode
+        self.editorMode:draw()
     end
-    
-    -- End camera transformation
-    self.camera:unset()
-    
-    -- Draw UI elements (not affected by camera)
-    self.ui:draw()
 end
 
 function Game:drawBackground()
@@ -184,6 +193,12 @@ function Game:drawBoardFrame()
 end
 
 function Game:keypressed(key)
+    -- Toggle editor mode with F2
+    if key == "f2" then
+        self.editorMode:toggleEditor()
+        return
+    end
+    
     if self.state == "playing" then
         -- Movement controls
         local dx, dy = 0, 0
@@ -216,6 +231,9 @@ function Game:keypressed(key)
         if key == "lshift" or key == "rshift" then
             self:showEntityInfo()
         end
+    elseif self.state == "editor" then
+        -- Pass keypresses to the editor
+        self.editorMode:keypressed(key)
     end
 end
 
@@ -286,21 +304,36 @@ function Game:keyreleased(key)
 end
 
 function Game:mousepressed(x, y, button)
-    -- Convert screen coordinates to world coordinates
-    local worldX, worldY = self.camera:screenToWorld(x, y)
-    
-    -- Convert world coordinates to grid coordinates
-    local gridX, gridY = self.grid:worldToGrid(worldX, worldY)
-    
-    -- Handle grid-based interactions
-    if button == 1 then  -- Left click
-        -- Example: Select a tile or move to it
-        print("Grid clicked: " .. gridX .. ", " .. gridY)
+    if self.state == "playing" then
+        -- Convert screen coordinates to world coordinates
+        local worldX, worldY = self.camera:screenToWorld(x, y)
+        
+        -- Convert world coordinates to grid coordinates
+        local gridX, gridY = self.grid:worldToGrid(worldX, worldY)
+        
+        -- Handle grid-based interactions
+        if button == 1 then  -- Left click
+            -- Example: Select a tile or move to it
+            print("Grid clicked: " .. gridX .. ", " .. gridY)
+        end
+    elseif self.state == "editor" then
+        -- Pass mouse events to the editor
+        self.editorMode:mousepressed(x, y, button)
     end
 end
 
 function Game:mousereleased(x, y, button)
-    -- Handle mouse releases if needed
+    if self.state == "editor" then
+        -- Pass mouse events to the editor
+        self.editorMode:mousereleased(x, y, button)
+    end
+end
+
+function Game:textinput(text)
+    if self.state == "editor" then
+        -- Pass text input to the editor
+        self.editorMode:textinput(text)
+    end
 end
 
 return Game
