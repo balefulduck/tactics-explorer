@@ -88,43 +88,89 @@ end
 function InfoScreen:draw()
     if self.alpha <= 0 or not self.targetEntity then return end
     
-    -- Calculate position (centered on screen)
-    local screenWidth = love.graphics.getWidth()
-    local screenHeight = love.graphics.getHeight()
-    local x = (screenWidth - self.width) / 2
-    local y = (screenHeight - self.height) / 2
+    -- Get the game object to access layout information
+    local game = love.filesystem.load("src/core/game.lua")().new()
     
-    -- Update connection target point
-    self.connectionPoints.target = {x = x + self.width / 2, y = y + 30}
+    -- Use the info section of the newspaper layout
+    local x = game.layout.info.x + 10
+    local y = game.layout.info.y + 50 -- Start below the section title
+    local width = game.layout.info.width - 20
+    local height = game.layout.info.height - 60
     
-    -- Draw connection line
-    love.graphics.setColor(self.accentColor[1], self.accentColor[2], self.accentColor[3], self.alpha * 0.7)
-    love.graphics.setLineWidth(2)
-    love.graphics.line(
-        self.connectionPoints.source.x, self.connectionPoints.source.y,
-        self.connectionPoints.target.x, self.connectionPoints.target.y
-    )
+    -- Draw entity name as title
+    love.graphics.setFont(self.titleFont)
+    love.graphics.setColor(0.2, 0.2, 0.2, self.alpha)
+    love.graphics.print(self.targetEntity.name, x, y)
+    y = y + self.titleFont:getHeight() + 5
     
-    -- Draw shadow
-    love.graphics.setColor(0, 0, 0, self.alpha * 0.2)
-    love.graphics.rectangle("fill", x + 5, y + 5, self.width, self.height, self.cornerRadius, self.cornerRadius)
+    -- Draw horizontal separator
+    love.graphics.setColor(0.6, 0.55, 0.5, self.alpha * 0.8)
+    love.graphics.setLineWidth(1)
+    love.graphics.line(x, y, x + width - 20, y)
+    y = y + 10
     
-    -- Draw background
-    love.graphics.setColor(
-        self.backgroundColor[1], 
-        self.backgroundColor[2], 
-        self.backgroundColor[3], 
-        self.alpha * self.backgroundColor[4]
-    )
-    love.graphics.rectangle("fill", x, y, self.width, self.height, self.cornerRadius, self.cornerRadius)
+    -- Draw entity properties
+    love.graphics.setFont(self.bodyFont)
+    love.graphics.setColor(0.2, 0.2, 0.2, self.alpha)
     
-    -- Draw border
-    love.graphics.setColor(self.accentColor[1], self.accentColor[2], self.accentColor[3], self.alpha * 0.8)
-    love.graphics.setLineWidth(2)
-    love.graphics.rectangle("line", x, y, self.width, self.height, self.cornerRadius, self.cornerRadius)
+    local entity = self.targetEntity
     
-    -- Draw content
-    self:drawContent(x, y)
+    -- Type
+    love.graphics.print("Type: " .. entity.type, x + 10, y)
+    y = y + self.bodyFont:getHeight() + 5
+    
+    -- Dimensions
+    if entity.properties and entity.properties.dimensions then
+        love.graphics.print("Dimensions: " .. entity.properties.dimensions, x + 10, y)
+    else
+        love.graphics.print("Dimensions: " .. entity.width .. "x" .. entity.height, x + 10, y)
+    end
+    y = y + self.bodyFont:getHeight() + 5
+    
+    -- Special properties section
+    y = y + 10
+    love.graphics.setColor(0.6, 0.55, 0.5, self.alpha * 0.8)
+    love.graphics.line(x, y, x + width - 20, y)
+    y = y + 10
+    
+    love.graphics.setColor(0.2, 0.2, 0.2, self.alpha)
+    love.graphics.setFont(self.headerFont)
+    love.graphics.print("Special Properties", x, y)
+    y = y + self.headerFont:getHeight() + 5
+    
+    -- List special properties
+    love.graphics.setFont(self.bodyFont)
+    local specialProps = {}
+    if entity.properties then
+        if entity.properties.sittable then table.insert(specialProps, "Sittable") end
+        if entity.properties.cover then table.insert(specialProps, "Provides Cover") end
+        if entity.properties.storage then table.insert(specialProps, "Storage") end
+        if entity.properties.searchable then table.insert(specialProps, "Searchable") end
+        if entity.properties.breakable then table.insert(specialProps, "Breakable") end
+    end
+    
+    if #specialProps > 0 then
+        for _, prop in ipairs(specialProps) do
+            love.graphics.print("• " .. prop, x + 10, y)
+            y = y + self.bodyFont:getHeight() + 5
+        end
+    else
+        love.graphics.print("No special properties", x + 10, y)
+        y = y + self.bodyFont:getHeight() + 5
+    end
+    
+    -- Draw flavor text
+    y = y + 15
+    love.graphics.setFont(self.flavorFont)
+    love.graphics.setColor(0.6, 0.3, 0.3, self.alpha * 0.9) -- Reddish for flavor text
+    
+    -- Use entity flavor text if available
+    local flavorText = self.flavorText
+    if entity.flavorText then
+        flavorText = entity.flavorText
+    end
+    
+    love.graphics.printf(flavorText, x, y, width - 20, "left")
     
     -- Reset colors and line width
     love.graphics.setColor(1, 1, 1, 1)

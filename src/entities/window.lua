@@ -2,8 +2,9 @@
 local Window = {}
 Window.__index = Window
 
-function Window:new(grid, gridX, gridY)
+function Window:new(grid, gridX, gridY, options)
     local self = setmetatable({}, Window)
+    options = options or {}
     
     self.grid = grid
     self.gridX = gridX or 1
@@ -11,6 +12,20 @@ function Window:new(grid, gridX, gridY)
     
     -- Calculate world position based on grid position
     self.x, self.y = grid:gridToWorld(self.gridX, self.gridY)
+    
+    -- Entity identification for UI
+    self.name = options.labelText or "Window"
+    self.type = "fixture"
+    
+    -- Properties for InfoScreen
+    self.properties = {
+        dimensions = "1x1",
+        breakable = true,
+        cover = true
+    }
+    
+    -- Flavor text for InfoScreen
+    self.flavorText = "A simple window letting in natural light. Through it, you can see the city sprawling in the distance, a maze of concrete and glass."
     
     -- Window attributes
     self.width = grid.tileSize   -- 1 tile wide

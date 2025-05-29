@@ -90,34 +90,35 @@ function Player:draw()
     -- Add player-specific visual elements
     local tileSize = self.grid.tileSize
     
-    -- Draw a simple player representation (circle with arrow indicating direction)
-    love.graphics.setColor(0.2, 0.2, 0.8, 0.7) -- Blue
-    
-    -- Draw circle
+    -- Calculate center position
     local centerX = self.x + tileSize / 2
     local centerY = self.y + tileSize / 2
-    local radius = tileSize / 3
     
-    love.graphics.circle("fill", centerX, centerY, radius)
+    -- Load the character PNG image if not already loaded
+    if not self.characterImage then
+        self.characterImage = love.graphics.newImage("assets/images/character.png")
+        
+        -- Calculate scale to fit within the tile
+        local maxSize = tileSize * 0.8 -- Leave some margin
+        self.characterScale = math.min(
+            maxSize / self.characterImage:getWidth(),
+            maxSize / self.characterImage:getHeight()
+        )
+    end
     
-    -- Draw direction indicator (default facing down)
-    love.graphics.setColor(0.9, 0.9, 0.9, 0.9) -- White
-    love.graphics.setLineWidth(2)
+    -- Draw the character image
+    love.graphics.setColor(1, 1, 1, 1) -- White (no tint)
     
-    -- Simple arrow
-    love.graphics.line(
-        centerX, centerY,
-        centerX, centerY + radius
-    )
-    
-    love.graphics.line(
-        centerX, centerY + radius,
-        centerX - radius/3, centerY + radius/2
-    )
-    
-    love.graphics.line(
-        centerX, centerY + radius,
-        centerX + radius/3, centerY + radius/2
+    -- Draw the image centered on the tile
+    love.graphics.draw(
+        self.characterImage,
+        centerX,
+        centerY,
+        0, -- rotation (none)
+        self.characterScale,
+        self.characterScale,
+        self.characterImage:getWidth() / 2, -- origin X (center of image)
+        self.characterImage:getHeight() / 2  -- origin Y (center of image)
     )
     
     -- Reset color and line width

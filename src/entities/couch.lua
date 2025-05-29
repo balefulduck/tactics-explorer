@@ -2,8 +2,9 @@
 local Couch = {}
 Couch.__index = Couch
 
-function Couch:new(grid, gridX, gridY)
+function Couch:new(grid, gridX, gridY, options)
     local self = setmetatable({}, Couch)
+    options = options or {}
     
     self.grid = grid
     self.gridX = gridX or 1
@@ -11,6 +12,20 @@ function Couch:new(grid, gridX, gridY)
     
     -- Calculate world position based on grid position
     self.x, self.y = grid:gridToWorld(self.gridX, self.gridY)
+    
+    -- Entity identification for UI
+    self.name = options.labelText or "Couch"
+    self.type = "furniture"
+    
+    -- Properties for InfoScreen
+    self.properties = {
+        dimensions = "3x1",
+        sittable = true,
+        cover = true
+    }
+    
+    -- Flavor text for InfoScreen
+    self.flavorText = "This couch is positively crawling. You feel the ten thousand legs even looking at it."
     
     -- Couch attributes
     local padding = 2

@@ -2,8 +2,9 @@
 local CoffeeTable = {}
 CoffeeTable.__index = CoffeeTable
 
-function CoffeeTable:new(grid, gridX, gridY)
+function CoffeeTable:new(grid, gridX, gridY, options)
     local self = setmetatable({}, CoffeeTable)
+    options = options or {}
     
     self.grid = grid
     self.gridX = gridX or 1
@@ -11,6 +12,20 @@ function CoffeeTable:new(grid, gridX, gridY)
     
     -- Calculate world position based on grid position
     self.x, self.y = grid:gridToWorld(self.gridX, self.gridY)
+    
+    -- Entity identification for UI
+    self.name = options.labelText or "Coffee Table"
+    self.type = "furniture"
+    
+    -- Properties for InfoScreen
+    self.properties = {
+        dimensions = "1x1",
+        storage = true,
+        cover = true
+    }
+    
+    -- Flavor text for InfoScreen
+    self.flavorText = "A small wooden coffee table with a circular top. Perfect for setting down a cup of coffee or a good book."
     
     -- Coffee table attributes
     self.width = grid.tileSize

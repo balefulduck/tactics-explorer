@@ -8,6 +8,7 @@ function Grid:new(tileSize)
     local self = setmetatable({}, Grid)
     
     self.tileSize = tileSize or 64
+    self.scaledTileSize = tileSize or 64 -- For scaled rendering
     self.currentMap = nil
     self.debug = false
     
@@ -17,6 +18,11 @@ end
 -- Convert grid coordinates to world coordinates
 function Grid:gridToWorld(gridX, gridY)
     return (gridX - 1) * self.tileSize, (gridY - 1) * self.tileSize
+end
+
+-- Convert grid coordinates to world coordinates using scaled tile size
+function Grid:gridToWorldScaled(gridX, gridY)
+    return (gridX - 1) * self.scaledTileSize, (gridY - 1) * self.scaledTileSize
 end
 
 -- Convert world coordinates to grid coordinates

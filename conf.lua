@@ -5,6 +5,7 @@ function love.conf(t)
     t.window.width = 1366               -- Window width (changed to 1366x768)
     t.window.height = 768               -- Window height (changed to 1366x768)
     
+    t.window.fullscreen = true          -- Start in fullscreen mode
     t.window.resizable = true           -- Let the window be user-resizable
     t.window.minwidth = 1024            -- Minimum window width (decreased)
     t.window.minheight = 600            -- Minimum window height (decreased)
