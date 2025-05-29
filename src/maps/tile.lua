@@ -50,25 +50,17 @@ function Tile:update(dt)
 end
 
 function Tile:draw()
-    -- Draw drop shadow first
-    love.graphics.setColor(0, 0, 0, 0.3)  -- Semi-transparent black for shadow
-    love.graphics.rectangle("fill", self.x + 2, self.y + 2, self.tileSize, self.tileSize)
+    -- All tiles have the same whitish background (#eeeeee)
+    love.graphics.setColor(0.93, 0.93, 0.93, 1)  -- #eeeeee
+    love.graphics.rectangle("fill", self.x, self.y, self.tileSize, self.tileSize)
     
-    -- Draw the tile as a rectangle
+    -- Draw the tile borders based on type
     if self.type == "floor" then
-        -- Floor tiles are #eeeeee
-        love.graphics.setColor(0.93, 0.93, 0.93, 1)  -- #eeeeee
-        love.graphics.rectangle("fill", self.x, self.y, self.tileSize, self.tileSize)
-        
         -- Subtle border for floor tiles
         love.graphics.setColor(0.85, 0.85, 0.85, 1)  -- Slightly darker than the fill
         love.graphics.setLineWidth(1)
         love.graphics.rectangle("line", self.x, self.y, self.tileSize, self.tileSize)
     else if self.type == "wall" then
-        -- Wall tiles are #717171 with fat black borders on sides facing the board
-        love.graphics.setColor(0.44, 0.44, 0.44, 1)  -- #717171
-        love.graphics.rectangle("fill", self.x, self.y, self.tileSize, self.tileSize)
-        
         -- Determine which sides of the wall are facing the board
         love.graphics.setColor(0, 0, 0, 1)  -- Black
         love.graphics.setLineWidth(3)  -- Fat border
@@ -116,9 +108,10 @@ function Tile:draw()
             love.graphics.rectangle("line", self.x, self.y, self.tileSize, self.tileSize)
         end
     else
-        -- Any other tile types (fallback)
-        love.graphics.setColor(0.93, 0.93, 0.93, 1)  -- #eeeeee
-        love.graphics.rectangle("fill", self.x, self.y, self.tileSize, self.tileSize)
+        -- Any other tile types - just add a border
+        love.graphics.setColor(0.85, 0.85, 0.85, 1)
+        love.graphics.setLineWidth(1)
+        love.graphics.rectangle("line", self.x, self.y, self.tileSize, self.tileSize)
     end
     end
     

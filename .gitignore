@@ -1,0 +1,33 @@
+# LÖVE2D specific
+*.love
+
+# OS specific
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.bak
+
+# Logs
+*.log
+
+# Dependency directories
+/node_modules/
+
+# Distribution files
+/dist/
+
+# Specific to your project
+offside.zip
+bb.jpg
+bedbugs.webp
+window.jpg

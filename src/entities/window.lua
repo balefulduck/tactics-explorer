@@ -15,7 +15,7 @@ function Window:new(grid, gridX, gridY)
     -- Window attributes
     self.width = grid.tileSize   -- 1 tile wide
     self.height = grid.tileSize  -- 1 tile high
-    self.color = {0.85, 0.85, 0.95, 1} -- Light blue-ish
+    self.color = {0.93, 0.93, 0.93, 1} -- Same whitish color as floor tiles (#eeeeee)
     self.borderColor = {0.93, 0.93, 0.93, 1} -- #eeeeee
     
     return self

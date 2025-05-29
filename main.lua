@@ -1,5 +1,5 @@
 -- Main entry point for the LÖVE2D game
-local Game = require("src.game")
+local Game = require("src.core.game")
 
 -- Global variables
 local game

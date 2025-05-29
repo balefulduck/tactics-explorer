@@ -15,7 +15,7 @@ function CoffeeTable:new(grid, gridX, gridY)
     -- Coffee table attributes
     self.width = grid.tileSize
     self.height = grid.tileSize
-    self.color = {0.6, 0.4, 0.2, 1} -- Brown
+    self.color = {0.93, 0.93, 0.93, 1} -- Same whitish color as floor tiles (#eeeeee)
     
     return self
 end

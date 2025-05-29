@@ -15,7 +15,7 @@ function Cupboard:new(grid, gridX, gridY)
     -- Cupboard attributes
     self.width = 4 * grid.tileSize  -- 4 tiles wide
     self.height = grid.tileSize     -- 1 tile high
-    self.color = {0.65, 0.5, 0.35, 1} -- Light brown/beige
+    self.color = {0.93, 0.93, 0.93, 1} -- Same whitish color as floor tiles (#eeeeee)
     
     -- Load the Megrim font
     self.font = love.graphics.newFont("assets/fonts/Megrim.ttf", 16)

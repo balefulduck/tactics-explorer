@@ -15,7 +15,7 @@ function Plant:new(grid, gridX, gridY)
     -- Plant attributes
     self.width = grid.tileSize
     self.height = grid.tileSize
-    self.color = {0.2, 0.7, 0.3, 1} -- Green plant
+    self.color = {0.93, 0.93, 0.93, 1} -- Same whitish color as floor tiles (#eeeeee)
     
     -- Load the Megrim font
     self.font = love.graphics.newFont("assets/fonts/Megrim.ttf", 14)

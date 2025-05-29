@@ -29,9 +29,30 @@ function Camera:update(dt)
         local targetX = self.target.x + self.target.grid.tileSize / 2
         local targetY = self.target.y + self.target.grid.tileSize / 2
         
-        -- Calculate desired camera position (center on target)
-        local desiredX = targetX - self.width / 2
-        local desiredY = targetY - self.height / 2
+        -- Define the deadzone (area where camera doesn't move)
+        local deadzonePadding = 150 -- pixels from edge before camera starts moving
+        local deadzoneLeft = self.x + deadzonePadding
+        local deadzoneRight = self.x + self.width - deadzonePadding
+        local deadzoneTop = self.y + deadzonePadding
+        local deadzoneBottom = self.y + self.height - deadzonePadding
+        
+        -- Calculate desired camera position based on deadzone
+        local desiredX = self.x
+        local desiredY = self.y
+        
+        -- Only move camera horizontally if target is approaching screen edge
+        if targetX < deadzoneLeft then
+            desiredX = self.x - (deadzoneLeft - targetX)
+        elseif targetX > deadzoneRight then
+            desiredX = self.x + (targetX - deadzoneRight)
+        end
+        
+        -- Only move camera vertically if target is approaching screen edge
+        if targetY < deadzoneTop then
+            desiredY = self.y - (deadzoneTop - targetY)
+        elseif targetY > deadzoneBottom then
+            desiredY = self.y + (targetY - deadzoneBottom)
+        end
         
         -- Smooth camera movement
         self.x = self.x + (desiredX - self.x) * self.smoothing * (60 * dt)
