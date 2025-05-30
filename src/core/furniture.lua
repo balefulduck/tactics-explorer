@@ -136,6 +136,9 @@ function Furniture.create(furnitureType, grid, gridX, gridY, options)
     -- Create the entity
     local furniture = Entity:new(config)
     
+    -- Add rotation property (default to 0)
+    furniture.rotation = options.rotation or 0
+    
     -- Add furniture-specific methods
     
     -- Custom interaction method based on furniture type

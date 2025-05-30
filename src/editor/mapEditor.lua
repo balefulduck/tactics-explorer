@@ -21,6 +21,14 @@ function MapEditor:new()
     self.grid = nil
     self.map = nil
     
+    -- Calculate UI panel dimensions (20% of screen width)
+    self.panelWidth = love.graphics.getWidth() * 0.20
+    self.panelX = love.graphics.getWidth() * 0.80
+    
+    -- Track window size for resize handling
+    self.lastWindowWidth = love.graphics.getWidth()
+    self.lastWindowHeight = love.graphics.getHeight()
+    
     -- Zoom and pan settings
     self.zoomLevel = 1.0
     self.minZoom = 0.25
@@ -63,23 +71,26 @@ function MapEditor:new()
     
     -- Available entity types with metadata for visual display
     self.entityTypes = {
-        {id = "couch", name = "Couch", color = {0.8, 0.5, 0.3}, width = 3, height = 1, description = "A comfortable couch"},
-        {id = "tv", name = "TV", color = {0.2, 0.2, 0.2}, width = 1, height = 1, description = "Television"},
-        {id = "coffee_table", name = "Coffee Table", color = {0.6, 0.4, 0.2}, width = 2, height = 1, description = "Small table"},
-        {id = "cupboard", name = "Cupboard", color = {0.5, 0.3, 0.2}, width = 1, height = 2, description = "Storage cupboard"},
-        {id = "plant", name = "Plant", color = {0.3, 0.7, 0.3}, width = 1, height = 1, description = "Decorative plant"},
-        {id = "bed", name = "Bed", color = {0.7, 0.7, 0.9}, width = 2, height = 2, description = "A bed"},
-        {id = "desk", name = "Desk", color = {0.5, 0.4, 0.3}, width = 2, height = 1, description = "Work desk"},
-        {id = "chair", name = "Chair", color = {0.7, 0.5, 0.3}, width = 1, height = 1, description = "Chair"}
+        {id = "couch", name = "Couch", color = {0.8, 0.5, 0.3}, description = "A comfortable couch"},
+        {id = "tv", name = "TV", color = {0.2, 0.2, 0.2}, description = "Television"},
+        {id = "coffee_table", name = "Coffee Table", color = {0.6, 0.4, 0.2}, description = "Small table"},
+        {id = "cupboard", name = "Cupboard", color = {0.5, 0.3, 0.2}, description = "Storage cupboard"},
+        {id = "plant", name = "Plant", color = {0.3, 0.7, 0.3}, description = "Decorative plant"},
+        {id = "bed", name = "Bed", color = {0.7, 0.7, 0.9}, description = "A bed"},
+        {id = "desk", name = "Desk", color = {0.5, 0.4, 0.3}, description = "Work desk"},
+        {id = "chair", name = "Chair", color = {0.7, 0.5, 0.3}, description = "Chair"}
     }
     
+    -- Entity rotation state
+    self.entityRotation = 0 -- 0, 90, 180, or 270 degrees
+    
     -- UI elements
-    self.buttonSize = 60  -- Increased for better visibility
-    self.buttonPadding = 10
-    self.panelWidth = 280  -- Increased for tile previews
-    self.panelHeight = 0  -- Will be calculated based on content
-    self.panelX = 20
-    self.panelY = 20
+    self.buttonSize = 40  -- Smaller buttons for minimalist design
+    self.buttonPadding = 6  -- Reduced padding
+    -- Panel is already initialized in new() function
+    self.panelHeight = love.graphics.getHeight() -- Full height panel
+    self.showUI = true  -- Ensure UI is visible by default
+    self.panelY = 0  -- Start from the top of the screen
     
     -- Map name for saving/loading
     self.mapName = "custom_map"
@@ -196,6 +207,22 @@ end
 function MapEditor:update(dt)
     if not self.active then return end
     
+    -- Update panel position on window resize
+    local currentWidth = love.graphics.getWidth()
+    local currentHeight = love.graphics.getHeight()
+    
+    -- Check if window size has changed
+    if self.lastWindowWidth ~= currentWidth or self.lastWindowHeight ~= currentHeight then
+        -- Update panel dimensions and position (20% of screen width)
+        self.panelWidth = currentWidth * 0.20
+        self.panelX = currentWidth * 0.80
+        self.panelHeight = currentHeight
+        
+        -- Store current window dimensions
+        self.lastWindowWidth = currentWidth
+        self.lastWindowHeight = currentHeight
+    end
+    
     -- Update map browser if it's visible
     if self.mapBrowser.visible then
         self.mapBrowser:update(dt)
@@ -231,7 +258,17 @@ end
 function MapEditor:draw()
     if not self.active then return end
     
-    -- Apply zoom and pan transformation
+    -- Define map container (left 80% of screen)
+    local mapContainerWidth = love.graphics.getWidth() * 0.80
+    local mapContainerHeight = love.graphics.getHeight()
+    
+    -- Create a stencil to constrain map rendering to the left 80% of the screen
+    love.graphics.stencil(function()
+        love.graphics.rectangle("fill", 0, 0, mapContainerWidth, mapContainerHeight)
+    end, "replace", 1)
+    love.graphics.setStencilTest("greater", 0)
+    
+    -- Apply zoom and pan transformation within the map container
     love.graphics.push()
     love.graphics.translate(self.panX, self.panY)
     love.graphics.scale(self.zoomLevel, self.zoomLevel)
@@ -251,6 +288,9 @@ function MapEditor:draw()
     
     -- Reset transformation for UI elements
     love.graphics.pop()
+    
+    -- Disable stencil test
+    love.graphics.setStencilTest()
     
     -- Draw UI if enabled (not affected by zoom)
     if self.showUI then
@@ -289,77 +329,363 @@ function MapEditor:drawGrid()
 end
 
 function MapEditor:drawUI()
-    -- Calculate panel height based on content
-    local numTileButtons = #self.tileTypes
-    local numEntityButtons = #self.entityTypes
-    local numSections = 3  -- Tools, Tiles, Entities
-    local sectionHeight = 30
-    local buttonsPerRow = 4
+    -- Set panel to full height
+    self.panelHeight = love.graphics.getHeight()
+    self.panelY = 0
     
-    -- Draw panel background
-    love.graphics.setColor(0.2, 0.2, 0.3, 0.9)
-    love.graphics.rectangle("fill", self.panelX, self.panelY, self.panelWidth, 650, 10, 10)  
-    love.graphics.setColor(0.4, 0.4, 0.5, 1)
-    love.graphics.rectangle("line", self.panelX, self.panelY, self.panelWidth, 650, 10, 10)
+    -- Define buttons per row for tile/entity grids based on panel width
+    local buttonsPerRow = math.floor((self.panelWidth - 20) / (self.buttonSize + self.buttonPadding))
+    if buttonsPerRow < 1 then buttonsPerRow = 1 end
     
-    -- Set font
+    -- Calculate section heights and padding
+    local sectionPadding = 15
+    
+    -- Draw panel background with a modern, minimalist black design
+    love.graphics.setColor(0.12, 0.12, 0.12, 0.95) -- Dark gray, almost black
+    love.graphics.rectangle("fill", self.panelX, self.panelY, self.panelWidth, self.panelHeight)
+    
+    -- Subtle separator line
+    love.graphics.setColor(0.3, 0.3, 0.3, 1)
+    love.graphics.setLineWidth(1)
+    love.graphics.line(self.panelX, 0, self.panelX, self.panelHeight)
+    
+    -- Set font for title
     love.graphics.setFont(self.titleFont)
     
-    -- Draw title
-    love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.print("Map Editor", self.panelX + 20, self.panelY + 20)
+    -- Draw title with minimalist style
+    love.graphics.setColor(1, 1, 1, 1) -- Pure white
+    love.graphics.print("MAP EDITOR", self.panelX + 10, self.panelY + 15)
     
-    -- Draw map name
-    local y = self.panelY + 60
+    -- TOP SECTION: Map properties
+    local y = self.panelY + 50
+    
+    -- Section header
     love.graphics.setFont(self.labelFont)
-    love.graphics.print("Map Name:", self.panelX + 20, y)
+    love.graphics.setColor(0.7, 0.7, 0.7, 1)
+    love.graphics.print("MAP PROPERTIES", self.panelX + 10, y)
+    y = y + 25
     
-    -- Draw map name input/display
-    love.graphics.setColor(0.3, 0.3, 0.4, 1)
-    love.graphics.rectangle("fill", self.panelX + 100, y - 5, 150, 25, 5, 5)
-    love.graphics.setColor(0.7, 0.7, 0.8, 1)
-    love.graphics.rectangle("line", self.panelX + 100, y - 5, 150, 25, 5, 5)
-    love.graphics.setColor(1, 1, 1, 1)
+    -- Map name input
+    love.graphics.setColor(0.6, 0.6, 0.6, 1)
+    love.graphics.print("Name:", self.panelX + 10, y)
     
+    -- Draw map name input field
+    local inputWidth = self.panelWidth - 20
+    local inputHeight = 24
+    local inputX = self.panelX + 10
+    local inputY = y + 18
+    
+    -- Input background
+    love.graphics.setColor(0.2, 0.2, 0.2, 0.8) -- Dark background
+    love.graphics.rectangle("fill", inputX, inputY, inputWidth, inputHeight, 2, 2)
+    
+    -- Input border (highlighted if active)
     if self.isEditingMapName then
-        love.graphics.print(self.mapNameInput .. "_", self.panelX + 110, y)
+        love.graphics.setColor(0.8, 0.8, 0.8, 0.9) -- Bright border when active
     else
-        love.graphics.print(self.mapName, self.panelX + 110, y)
-        if self:isMouseOver(self.panelX + 100, y - 5, 150, 25) and love.mouse.isDown(1) then
-            self.isEditingMapName = true
-            self.mapNameInput = self.mapName
-        end
+        love.graphics.setColor(0.4, 0.4, 0.4, 0.8) -- Subtle border when inactive
+    end
+    love.graphics.rectangle("line", inputX, inputY, inputWidth, inputHeight, 2, 2)
+    
+    -- Input text
+    love.graphics.setColor(1, 1, 1, 0.9) -- White text
+    if self.isEditingMapName then
+        love.graphics.print(self.mapNameInput .. "_", inputX + 5, inputY + 4)
+    else
+        love.graphics.print(self.mapName, inputX + 5, inputY + 4)
     end
     
-    -- Draw map dimensions
-    y = y + 40
-    love.graphics.print("Width:", self.panelX + 20, y)
+    -- Map dimensions
+    y = inputY + inputHeight + 20
+    
+    -- Width and height labels
+    love.graphics.setColor(0.6, 0.6, 0.6, 1)
+    love.graphics.print("Width:", self.panelX + 10, y)
+    love.graphics.print("Height:", self.panelX + (self.panelWidth/2), y)
     
     -- Width input
-    love.graphics.setColor(0.3, 0.3, 0.4, 1)
-    love.graphics.rectangle("fill", self.panelX + 70, y - 5, 50, 25, 5, 5)
-    love.graphics.setColor(0.7, 0.7, 0.8, 1)
-    love.graphics.rectangle("line", self.panelX + 70, y - 5, 50, 25, 5, 5)
-    love.graphics.setColor(1, 1, 1, 1)
+    local dimensionInputWidth = (self.panelWidth / 2) - 20
+    local dimensionInputX = self.panelX + 10
+    local dimensionInputY = y + 18
     
+    -- Width input background
+    love.graphics.setColor(0.2, 0.2, 0.2, 0.8)
+    love.graphics.rectangle("fill", dimensionInputX, dimensionInputY, dimensionInputWidth, inputHeight, 2, 2)
+    
+    -- Width input border
     if self.isEditingWidth then
-        love.graphics.print(self.widthInput .. "_", self.panelX + 80, y)
+        love.graphics.setColor(0.8, 0.8, 0.8, 0.9) -- Bright border when active
     else
-        love.graphics.print(self.widthInput, self.panelX + 80, y)
-        if self:isMouseOver(self.panelX + 70, y - 5, 50, 25) and love.mouse.isDown(1) then
-            self.isEditingWidth = true
-            self.widthInput = tostring(self.width)
+        love.graphics.setColor(0.4, 0.4, 0.4, 0.8) -- Subtle border when inactive
+    end
+    love.graphics.rectangle("line", dimensionInputX, dimensionInputY, dimensionInputWidth, inputHeight, 2, 2)
+    
+    -- Width input text
+    love.graphics.setColor(1, 1, 1, 0.9)
+    if self.isEditingWidth then
+        love.graphics.print(self.widthInput .. "_", dimensionInputX + 5, dimensionInputY + 4)
+    else
+        love.graphics.print(self.width, dimensionInputX + 5, dimensionInputY + 4)
+    end
+    
+    -- Height input
+    local heightInputX = self.panelX + (self.panelWidth/2)
+    
+    -- Height input background
+    love.graphics.setColor(0.2, 0.2, 0.2, 0.8)
+    love.graphics.rectangle("fill", heightInputX, dimensionInputY, dimensionInputWidth, inputHeight, 2, 2)
+    
+    -- Height input border
+    if self.isEditingHeight then
+        love.graphics.setColor(0.8, 0.8, 0.8, 0.9) -- Bright border when active
+    else
+        love.graphics.setColor(0.4, 0.4, 0.4, 0.8) -- Subtle border when inactive
+    end
+    love.graphics.rectangle("line", heightInputX, dimensionInputY, dimensionInputWidth, inputHeight, 2, 2)
+    
+    -- Height input text
+    love.graphics.setColor(1, 1, 1, 0.9)
+    if self.isEditingHeight then
+        love.graphics.print(self.heightInput .. "_", heightInputX + 5, dimensionInputY + 4)
+    else
+        love.graphics.print(self.height, heightInputX + 5, dimensionInputY + 4)
+    end
+    
+    -- End of top section
+    local topSectionEnd = dimensionInputY + inputHeight + sectionPadding
+    
+    -- MIDDLE SECTION: Tool selection
+    y = topSectionEnd
+    
+    -- Section divider
+    love.graphics.setColor(0.3, 0.3, 0.3, 1)
+    love.graphics.line(self.panelX + 10, y, self.panelX + self.panelWidth - 10, y)
+    y = y + 10
+    
+    -- Section header
+    love.graphics.setColor(0.7, 0.7, 0.7, 1)
+    love.graphics.print("TOOLS", self.panelX + 10, y)
+    y = y + 25
+    
+    -- Tool buttons
+    local toolButtonWidth = (self.panelWidth - 30) / 2
+    local toolButtonHeight = 30
+    local toolButtonSpacing = 10
+    
+    -- Tile tool button
+    if self.selectedTool == "tile" then
+        love.graphics.setColor(0.6, 0.6, 0.6, 0.9) -- Selected
+    else
+        love.graphics.setColor(0.3, 0.3, 0.3, 0.7) -- Normal
+    end
+    love.graphics.rectangle("fill", self.panelX + 10, y, toolButtonWidth, toolButtonHeight, 2, 2)
+    
+    -- Entity tool button
+    if self.selectedTool == "entity" then
+        love.graphics.setColor(0.6, 0.6, 0.6, 0.9) -- Selected
+    else
+        love.graphics.setColor(0.3, 0.3, 0.3, 0.7) -- Normal
+    end
+    love.graphics.rectangle("fill", self.panelX + 10 + toolButtonWidth + toolButtonSpacing, y, toolButtonWidth, toolButtonHeight, 2, 2)
+    
+    -- Tool button text
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.print("TILES", self.panelX + 10 + (toolButtonWidth - self.labelFont:getWidth("TILES")) / 2, y + 8)
+    love.graphics.print("ENTITIES", self.panelX + 10 + toolButtonWidth + toolButtonSpacing + (toolButtonWidth - self.labelFont:getWidth("ENTITIES")) / 2, y + 8)
+    
+    -- BOTTOM SECTION: Tile/Entity selection based on selected tool
+    y = y + toolButtonHeight + 20
+    
+    -- Section header
+    love.graphics.setColor(0.7, 0.7, 0.7, 1)
+    if self.selectedTool == "tile" then
+        love.graphics.print("TILE TYPES", self.panelX + 10, y)
+    else
+        love.graphics.print("ENTITY TYPES", self.panelX + 10, y)
+    end
+    y = y + 25
+    
+    -- Display tile or entity buttons based on selected tool
+    if self.selectedTool == "tile" then
+        -- Tile buttons
+        for i, tileType in ipairs(self.tileTypes) do
+            local row = math.floor((i-1) / buttonsPerRow)
+            local col = (i-1) % buttonsPerRow
+            local buttonX = self.panelX + 10 + col * (self.buttonSize + self.buttonPadding)
+            local buttonY = y + row * (self.buttonSize + self.buttonPadding + 15)
+            
+            -- Button background
+            if self.selectedTileType == tileType.id then
+                love.graphics.setColor(0.6, 0.6, 0.6, 0.9) -- Selected
+            else
+                love.graphics.setColor(0.3, 0.3, 0.3, 0.7) -- Normal
+            end
+            love.graphics.rectangle("fill", buttonX, buttonY, self.buttonSize, self.buttonSize, 2, 2)
+            
+            -- Draw tile preview
+            love.graphics.setColor(1, 1, 1, 1)
+            if self.tilePreviews[tileType.id] then
+                love.graphics.draw(self.tilePreviews[tileType.id], buttonX, buttonY)
+            end
+            
+            -- Draw tile name below the preview
+            love.graphics.setFont(self.labelFont)
+            local nameWidth = self.labelFont:getWidth(tileType.name)
+            local maxWidth = self.buttonSize
+            if nameWidth > maxWidth then
+                -- Truncate name if too long
+                local truncatedName = tileType.name:sub(1, 5) .. "..."
+                love.graphics.print(truncatedName, buttonX, buttonY + self.buttonSize + 2)
+            else
+                love.graphics.print(tileType.name, buttonX, buttonY + self.buttonSize + 2)
+            end
+        end
+    else
+        -- Entity buttons
+        for i, entityType in ipairs(self.entityTypes) do
+            local row = math.floor((i-1) / buttonsPerRow)
+            local col = (i-1) % buttonsPerRow
+            local buttonX = self.panelX + 10 + col * (self.buttonSize + self.buttonPadding)
+            local buttonY = y + row * (self.buttonSize + self.buttonPadding + 15)
+            
+            -- Button background
+            if self.selectedEntityType == entityType.id then
+                love.graphics.setColor(0.6, 0.6, 0.6, 0.9) -- Selected
+            else
+                love.graphics.setColor(0.3, 0.3, 0.3, 0.7) -- Normal
+            end
+            love.graphics.rectangle("fill", buttonX, buttonY, self.buttonSize, self.buttonSize, 2, 2)
+            
+            -- Draw entity preview
+            love.graphics.setColor(1, 1, 1, 1)
+            if self.entityPreviews[entityType.id] then
+                love.graphics.draw(self.entityPreviews[entityType.id], buttonX, buttonY)
+            end
+            
+            -- Draw entity name below the preview
+            love.graphics.setFont(self.labelFont)
+            local nameWidth = self.labelFont:getWidth(entityType.name)
+            local maxWidth = self.buttonSize
+            if nameWidth > maxWidth then
+                -- Truncate name if too long
+                local truncatedName = entityType.name:sub(1, 5) .. "..."
+                love.graphics.print(truncatedName, buttonX, buttonY + self.buttonSize + 2)
+            else
+                love.graphics.print(entityType.name, buttonX, buttonY + self.buttonSize + 2)
+            end
+            
+            -- Draw entity dimensions
+            local width, height = self:getEntityDimensions(entityType.id)
+            local dimText = width .. "x" .. height
+            love.graphics.setColor(0.7, 0.7, 0.7, 0.8)
+            love.graphics.print(dimText, buttonX, buttonY + self.buttonSize + 15)
         end
     end
     
-    -- Plus button
-    if self:drawButton(self.panelX + 130, y, 20, 20, "+", self.width < 50) then
-        if self.width < 50 then
-            self.width = self.width + 1
-            self.widthInput = tostring(self.width)
-            self:resizeMap(self.width, self.height)
-        end
+    -- Draw map name input field
+    local inputWidth = self.panelWidth - 20
+    local inputHeight = 24
+    local inputX = self.panelX + 10
+    local inputY = y + 18
+    
+    -- Input background
+    love.graphics.setColor(0.2, 0.2, 0.2, 0.8) -- Dark background
+    love.graphics.rectangle("fill", inputX, inputY, inputWidth, inputHeight, 2, 2)
+    
+    -- Input border (highlighted if active)
+    if self.isEditingMapName then
+        love.graphics.setColor(0.8, 0.8, 0.8, 0.9) -- Bright border when active
+    else
+        love.graphics.setColor(0.4, 0.4, 0.4, 0.8) -- Subtle border when inactive
     end
+    love.graphics.rectangle("line", inputX, inputY, inputWidth, inputHeight, 2, 2)
+    
+    -- Input text
+    love.graphics.setColor(1, 1, 1, 0.9) -- White text
+    if self.isEditingMapName then
+        love.graphics.print(self.mapNameInput .. "_", inputX + 5, inputY + 4)
+    else
+        love.graphics.print(self.mapName, inputX + 5, inputY + 4)
+    end
+    
+    -- Map dimensions
+    y = inputY + inputHeight + 20
+    
+    -- Width and height labels
+    love.graphics.setColor(0.6, 0.6, 0.6, 1)
+    love.graphics.print("Width:", self.panelX + 10, y)
+    love.graphics.print("Height:", self.panelX + (self.panelWidth/2), y)
+    
+    -- Width input
+    local dimensionInputWidth = (self.panelWidth / 2) - 20
+    local dimensionInputX = self.panelX + 10
+    local dimensionInputY = y + 18
+    
+    -- Width input background
+    love.graphics.setColor(0.2, 0.2, 0.2, 0.8)
+    love.graphics.rectangle("fill", dimensionInputX, dimensionInputY, dimensionInputWidth, inputHeight, 2, 2)
+    
+    -- Width input border
+    if self.isEditingWidth then
+        love.graphics.setColor(0.8, 0.8, 0.8, 0.9) -- Bright border when active
+    else
+        love.graphics.setColor(0.4, 0.4, 0.4, 0.8) -- Subtle border when inactive
+    end
+    love.graphics.rectangle("line", dimensionInputX, dimensionInputY, dimensionInputWidth, inputHeight, 2, 2)
+    
+    -- Width input text
+    love.graphics.setColor(1, 1, 1, 0.9)
+    if self.isEditingWidth then
+        love.graphics.print(self.widthInput .. "_", dimensionInputX + 5, dimensionInputY + 4)
+    else
+        love.graphics.print(self.width, dimensionInputX + 5, dimensionInputY + 4)
+    end
+    
+    -- Height input
+    local heightInputX = self.panelX + (self.panelWidth/2)
+    
+    -- Height input background
+    love.graphics.setColor(0.2, 0.2, 0.2, 0.8)
+    love.graphics.rectangle("fill", heightInputX, dimensionInputY, dimensionInputWidth, inputHeight, 2, 2)
+    
+    -- Height input border
+    if self.isEditingHeight then
+        love.graphics.setColor(0.8, 0.8, 0.8, 0.9) -- Bright border when active
+    else
+        love.graphics.setColor(0.4, 0.4, 0.4, 0.8) -- Subtle border when inactive
+    end
+    love.graphics.rectangle("line", heightInputX, dimensionInputY, dimensionInputWidth, inputHeight, 2, 2)
+    
+    -- Height input text
+    love.graphics.setColor(1, 1, 1, 0.9)
+    if self.isEditingHeight then
+        love.graphics.print(self.heightInput .. "_", heightInputX + 5, dimensionInputY + 4)
+    else
+        love.graphics.print(self.height, heightInputX + 5, dimensionInputY + 4)
+    end
+    
+    -- End of top section
+    local topSectionEnd = dimensionInputY + inputHeight + sectionPadding
+    
+    -- Height input
+    y = y + 30
+    love.graphics.print("Height:", self.panelX + 20, y)
+
+love.graphics.setColor(0.3, 0.3, 0.4, 1)
+love.graphics.rectangle("fill", self.panelX + 70, y - 5, 50, 25, 5, 5)
+love.graphics.setColor(0.7, 0.7, 0.8, 1)
+love.graphics.rectangle("line", self.panelX + 70, y - 5, 50, 25, 5, 5)
+love.graphics.setColor(1, 1, 1, 1)
+
+if self.isEditingHeight then
+    love.graphics.print(self.heightInput .. "_", self.panelX + 80, y)
+else
+    love.graphics.print(self.heightInput, self.panelX + 80, y)
+    if self:isMouseOver(self.panelX + 70, y - 5, 50, 25) and love.mouse.isDown(1) then
+        self.isEditingHeight = true
+        self.heightInput = tostring(self.height)
+    end
+end
     
     -- Minus button
     if self:drawButton(self.panelX + 160, y, 20, 20, "-", self.width > 5) then
@@ -545,7 +871,8 @@ function MapEditor:drawUI()
             love.graphics.print(entityType.name, labelX, buttonY + self.buttonSize + 2)
             
             -- Draw entity dimensions
-            local dimText = entityType.width .. "x" .. entityType.height
+            local width, height = self:getEntityDimensions(entityType.id)
+            local dimText = width .. "x" .. height
             local dimWidth = self.labelFont:getWidth(dimText)
             local dimX = buttonX + (self.buttonSize - dimWidth) / 2
             love.graphics.setColor(0.8, 0.8, 0.8, 1)
@@ -613,10 +940,55 @@ function MapEditor:drawUI()
     love.graphics.setFont(love.graphics.getFont())
 end
 
+-- Get entity dimensions from the furniture module
+function MapEditor:getEntityDimensions(entityType)
+    -- Create a temporary entity to get its dimensions
+    local tempEntity = Furniture.create(entityType, self.grid, 1, 1)
+    if tempEntity then
+        local width = tempEntity.width or 1
+        local height = tempEntity.height or 1
+        return width, height
+    end
+    return 1, 1  -- Default to 1x1 if entity type not found
+end
+
+-- Rotate the current entity dimensions
+function MapEditor:rotateEntity()
+    -- Rotate by 90 degrees clockwise
+    self.entityRotation = (self.entityRotation + 90) % 360
+    print("Entity rotated to " .. self.entityRotation .. " degrees")
+end
+
+-- Get rotated entity dimensions
+function MapEditor:getRotatedEntityDimensions(entityType)
+    local width, height = self:getEntityDimensions(entityType)
+    
+    -- If rotation is 90 or 270 degrees, swap width and height
+    if self.entityRotation == 90 or self.entityRotation == 270 then
+        return height, width
+    end
+    
+    return width, height
+end
+
+-- Apply rotation to an entity
+function MapEditor:applyRotationToEntity(entity)
+    if entity and self.entityRotation > 0 then
+        entity.rotation = self.entityRotation
+        
+        -- If rotation is 90 or 270 degrees, swap width and height
+        if self.entityRotation == 90 or self.entityRotation == 270 then
+            local temp = entity.width
+            entity.width = entity.height
+            entity.height = temp
+        end
+    end
+    
+    return entity
+end
+
 function MapEditor:mousepressed(x, y, button)
     if not self.active then return end
-    
-    print("Mouse pressed at: " .. x .. ", " .. y)
     
     -- Handle map browser if it's visible
     if self.mapBrowser.visible then
@@ -637,21 +1009,16 @@ function MapEditor:mousepressed(x, y, button)
     if button == 1 then  -- Left click
         -- Check if clicking on UI
         if self:isMouseOverUI() then
-            print("Mouse is over UI")
             -- Try direct tool selection first
             if y >= 400 and y <= 430 and x >= 20 and x <= 250 then
-                print("Clicked in tool selection area")
                 -- Tile tool
                 if x < 90 then
-                    print("Selecting tile tool")
                     self.selectedTool = "tile"
                 -- Entity tool
                 elseif x < 170 then
-                    print("Selecting entity tool")
                     self.selectedTool = "entity"
                 -- Erase tool
                 elseif x < 250 then
-                    print("Selecting erase tool")
                     self.selectedTool = "erase"
                 end
                 return
@@ -661,7 +1028,6 @@ function MapEditor:mousepressed(x, y, button)
             if self.selectedTool == "tile" and y >= 450 and y <= 600 then
                 local index = math.floor((y - 450) / 70) * 4 + math.floor((x - 20) / 70) + 1
                 if index <= #self.tileTypes then
-                    print("Selecting tile type: " .. self.tileTypes[index].id)
                     self.selectedTileType = self.tileTypes[index].id
                 end
                 return
@@ -671,8 +1037,9 @@ function MapEditor:mousepressed(x, y, button)
             if self.selectedTool == "entity" and y >= 450 and y <= 600 then
                 local index = math.floor((y - 450) / 70) * 4 + math.floor((x - 20) / 70) + 1
                 if index <= #self.entityTypes then
-                    print("Selecting entity type: " .. self.entityTypes[index].id)
                     self.selectedEntityType = self.entityTypes[index].id
+                    -- Reset rotation when selecting a new entity
+                    self.entityRotation = 0
                 end
                 return
             end
@@ -689,11 +1056,16 @@ function MapEditor:mousepressed(x, y, button)
             self:applyTool(self.gridX, self.gridY)
         end
     elseif button == 2 then  -- Right click
+        -- If entity tool is selected, rotate the entity
+        if self.selectedTool == "entity" and self:isMouseOverMap() then
+            self:rotateEntity()
+        end
+    elseif button == 3 then  -- Middle mouse button
         -- Start panning
         self.isPanning = true
         self.lastMouseX = x
         self.lastMouseY = y
-    elseif button == 3 then  -- Middle click
+    elseif button == 4 then  -- Mouse wheel button (if available)
         -- Reset zoom and pan
         self.zoomLevel = 1.0
         self.panX = 0
@@ -704,80 +1076,101 @@ end
 function MapEditor:keypressed(key)
     if not self.active then return end
     
-    -- Handle map browser if it's visible
+    -- Handle map browser keypresses if it's visible
     if self.mapBrowser.visible then
-        local result = self.mapBrowser:keypressed(key)
-        if result == "load" then
-            local mapName = self.mapBrowser:getSelectedMap()
-            if mapName then
-                self.mapName = mapName
-                self:loadMap()
-            end
-            self.mapBrowser:hide()
-        elseif result == "cancel" then
-            self.mapBrowser:hide()
-        end
+        self.mapBrowser:keypressed(key)
         return
     end
     
-    -- Handle map name editing
-    if self.isEditingMapName then
-        if key == "return" or key == "escape" then
-            -- Finish editing
+    if key == "escape" then
+        -- Cancel any active editing
+        if self.isEditingMapName then
             self.isEditingMapName = false
-            if key == "return" and self.mapNameInput ~= "" then
-                self.mapName = self.mapNameInput
-            end
-            self.mapNameInput = ""
-        elseif key == "backspace" then
-            -- Remove the last character
-            self.mapNameInput = self.mapNameInput:sub(1, -2)
-        end
-        return
-    end
-    
-    -- Handle width editing
-    if self.isEditingWidth then
-        if key == "return" or key == "escape" then
-            -- Finish editing
+        elseif self.isEditingWidth then
             self.isEditingWidth = false
-            if key == "return" and self.widthInput ~= "" then
-                local newWidth = tonumber(self.widthInput)
-                if newWidth and newWidth >= 5 and newWidth <= 50 then
-                    self:resizeMap(newWidth, self.height)
-                end
-            end
-            self.widthInput = tostring(self.width)
-        elseif key == "backspace" then
-            -- Remove the last character
-            self.widthInput = self.widthInput:sub(1, -2)
-        elseif key:match("^%d$") then
-            -- Only allow digits
-            self.widthInput = self.widthInput .. key
-        end
-        return
-    end
-    
-    -- Handle height editing
-    if self.isEditingHeight then
-        if key == "return" or key == "escape" then
-            -- Finish editing
+        elseif self.isEditingHeight then
             self.isEditingHeight = false
-            if key == "return" and self.heightInput ~= "" then
-                local newHeight = tonumber(self.heightInput)
-                if newHeight and newHeight >= 5 and newHeight <= 50 then
-                    self:resizeMap(self.width, newHeight)
-                end
+        end
+    elseif key == "tab" then
+        -- Tab navigation between input fields
+        if self.isEditingMapName then
+            -- Apply current changes
+            self.mapName = self.mapNameInput
+            self.isEditingMapName = false
+            -- Move to width field
+            self.isEditingWidth = true
+            self.widthInput = tostring(self.width)
+        elseif self.isEditingWidth then
+            -- Apply current changes
+            local newWidth = tonumber(self.widthInput)
+            if newWidth and newWidth >= 5 and newWidth <= 50 then
+                self.width = newWidth
+                self:resizeMap(self.width, self.height)
             end
+            self.isEditingWidth = false
+            -- Move to height field
+            self.isEditingHeight = true
             self.heightInput = tostring(self.height)
-        elseif key == "backspace" then
-            -- Remove the last character
+        elseif self.isEditingHeight then
+            -- Apply current changes
+            local newHeight = tonumber(self.heightInput)
+            if newHeight and newHeight >= 5 and newHeight <= 50 then
+                self.height = newHeight
+                self:resizeMap(self.width, self.height)
+            end
+            self.isEditingHeight = false
+            -- Move back to map name field
+            self.isEditingMapName = true
+            self.mapNameInput = self.mapName
+        else
+            -- If no field is active, start with map name
+            self.isEditingMapName = true
+            self.mapNameInput = self.mapName
+        end
+    elseif key == "backspace" then
+        if self.isEditingMapName then
+            self.mapNameInput = self.mapNameInput:sub(1, -2)
+        elseif self.isEditingWidth then
+            self.widthInput = self.widthInput:sub(1, -2)
+        elseif self.isEditingHeight then
             self.heightInput = self.heightInput:sub(1, -2)
-        elseif key:match("^%d$") then
-            -- Only allow digits
+        end
+    elseif key:match("^[0-9]$") then
+        if self.isEditingWidth then
+            self.widthInput = self.widthInput .. key
+        elseif self.isEditingHeight then
             self.heightInput = self.heightInput .. key
         end
         return
+    end
+    
+    -- Toggle grid visibility with G key
+    if key == "g" then
+        self.showGrid = not self.showGrid
+    end
+    
+    -- Toggle UI visibility with U key
+    if key == "u" then
+        self.showUI = not self.showUI
+    end
+    
+    -- Reset zoom and pan with R key
+    if key == "r" then
+        self.zoomLevel = 1.0
+        self.panX = 0
+        self.panY = 0
+    end
+    
+    -- Toggle panning mode with P key
+    if key == "p" then
+        self.isPanning = not self.isPanning
+        if self.isPanning then
+            -- Store current mouse position for panning
+            self.lastMouseX, self.lastMouseY = love.mouse.getPosition()
+            print("Panning mode enabled - Move mouse to pan")
+        else
+            print("Panning mode disabled")
+        end
     end
     
     -- Global keyboard shortcuts
@@ -787,15 +1180,8 @@ function MapEditor:keypressed(key)
     elseif key == "l" and love.keyboard.isDown("lctrl") then
         -- Ctrl+L to load
         self:showMapBrowser()
-    elseif key == "g" then
-        -- G to toggle grid
-        self.showGrid = not self.showGrid
-    elseif key == "u" then
-        -- U to toggle UI
-        self.showUI = not self.showUI
     end
 end
-
 function MapEditor:textinput(text)
     if not self.active then return end
     
@@ -862,10 +1248,13 @@ function MapEditor:applyTool(gridX, gridY)
         if entityType then
             local entity = Furniture.create(entityType, self.grid, gridX, gridY)
             if entity then
+                -- Apply rotation to the entity
+                self:applyRotationToEntity(entity)
+                
                 -- Check if the entity can be placed here
                 if self.map:canPlaceEntity(entity) then
                     self.map:addEntity(entity)
-                    print("Placed entity: " .. entityType .. " at " .. gridX .. "," .. gridY)
+                    print("Placed entity: " .. entityType .. " at " .. gridX .. "," .. gridY .. " with rotation " .. self.entityRotation)
                 else
                     print("Cannot place entity here: collision detected")
                 end
@@ -1133,13 +1522,9 @@ function MapEditor:drawCursorHighlight()
         local entityWidth = 1
         local entityHeight = 1
         
-        -- Find the selected entity type to get its dimensions
-        for _, entity in ipairs(self.entityTypes) do
-            if entity.id == self.selectedEntityType then
-                entityWidth = entity.width or 1
-                entityHeight = entity.height or 1
-                break
-            end
+        -- Get the entity dimensions from the furniture module and apply rotation
+        if self.selectedEntityType then
+            entityWidth, entityHeight = self:getRotatedEntityDimensions(self.selectedEntityType)
         end
         
         -- Draw entity footprint
@@ -1174,29 +1559,37 @@ function MapEditor:drawButton(x, y, width, height, text, enabled, isSelected)
     local isHovered = self:isMouseOver(x, y, width, height)
     local isClicked = isHovered and love.mouse.isDown(1) and enabled
     
-    -- Set button colors based on state
+    -- Set button colors based on state - minimalist black and white design
     if not enabled then
-        love.graphics.setColor(0.3, 0.3, 0.3, 0.7)
+        love.graphics.setColor(0.2, 0.2, 0.2, 0.5) -- Dark gray, disabled
     elseif isSelected then
-        love.graphics.setColor(0.3, 0.7, 1, 1)
+        love.graphics.setColor(1, 1, 1, 0.9) -- White for selected
     elseif isClicked then
-        love.graphics.setColor(0.6, 0.6, 0.8, 1)
+        love.graphics.setColor(0.8, 0.8, 0.8, 0.9) -- Light gray when clicked
     elseif isHovered then
-        love.graphics.setColor(0.5, 0.5, 0.7, 1)
+        love.graphics.setColor(0.6, 0.6, 0.6, 0.8) -- Medium gray when hovered
     else
-        love.graphics.setColor(0.4, 0.4, 0.6, 1)
+        love.graphics.setColor(0.3, 0.3, 0.3, 0.7) -- Dark gray normally
     end
     
-    -- Draw button background
-    love.graphics.rectangle("fill", x, y, width, height, 4, 4)
+    -- Draw button background - flat design with subtle rounded corners
+    love.graphics.rectangle("fill", x, y, width, height, 2, 2)
     
-    -- Draw button border
-    love.graphics.setColor(0.7, 0.7, 0.7, 1)
-    love.graphics.rectangle("line", x, y, width, height, 4, 4)
+    -- Only draw border for selected or hovered buttons
+    if isSelected or isHovered then
+        love.graphics.setColor(1, 1, 1, 0.5) -- Subtle white border
+        love.graphics.setLineWidth(1)
+        love.graphics.rectangle("line", x, y, width, height, 2, 2)
+    end
     
-    -- Draw button text
+    -- Draw button text - white for selected/hovered, light gray otherwise
     love.graphics.setFont(self.buttonFont)
-    love.graphics.setColor(1, 1, 1, 1)
+    
+    if isSelected or isHovered then
+        love.graphics.setColor(1, 1, 1, 1) -- Pure white for selected/hovered
+    else
+        love.graphics.setColor(0.9, 0.9, 0.9, 0.9) -- Light gray otherwise
+    end
     
     local textWidth = self.buttonFont:getWidth(text)
     local textHeight = self.buttonFont:getHeight()
@@ -1218,7 +1611,7 @@ function MapEditor:mousereleased(x, y, button)
     
     if button == 1 then  -- Left click
         self.isDragging = false
-    elseif button == 2 then  -- Right click
+    elseif button == 3 then  -- Middle mouse button
         self.isPanning = false
     end
 end
@@ -1393,14 +1786,25 @@ end
 
 -- Check if mouse is over the UI panel
 function MapEditor:isMouseOverUI()
-    -- Check if mouse is over the UI panel
-    return self:isMouseOver(self.panelX, self.panelY, self.panelWidth, 650)
+    -- Check if mouse is over the UI panel (right 20% of screen)
+    local mx, my = love.mouse.getPosition()
+    local panelX = love.graphics.getWidth() * 0.80
+    
+    -- Mouse is over UI if it's in the right 20% of the screen
+    return mx >= panelX
 end
 
 -- Check if mouse is over the map area
 function MapEditor:isMouseOverMap()
-    -- Check if mouse is over the map area
-    return self.gridX >= 1 and self.gridX <= self.width and
+    -- First check if mouse is within the map container (left 80% of screen)
+    local mx, my = love.mouse.getPosition()
+    local mapContainerWidth = love.graphics.getWidth() * 0.80
+    
+    -- Only consider mouse over map if it's within the left 85% of the screen
+    -- and within the valid grid coordinates
+    return mx < mapContainerWidth and
+           self.gridX >= 1 and self.gridX <= self.width and
            self.gridY >= 1 and self.gridY <= self.height
 end
+
 return MapEditor
