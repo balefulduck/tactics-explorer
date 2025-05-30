@@ -44,3 +44,8 @@ function love.mousereleased(x, y, button)
     -- Handle mouse release events
     game:mousereleased(x, y, button)
 end
+
+function love.wheelmoved(x, y)
+    -- Handle mouse wheel events for zooming
+    game:wheelmoved(x, y)
+end

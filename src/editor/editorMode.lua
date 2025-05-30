@@ -128,6 +128,12 @@ function EditorMode:mousereleased(x, y, button)
     end
 end
 
+function EditorMode:wheelmoved(x, y)
+    if self.isEditorActive and self.editor then
+        self.editor:wheelmoved(x, y)
+    end
+end
+
 function EditorMode:applyMapToGame()
     if not self.isEditorActive or not self.editor then return end
     

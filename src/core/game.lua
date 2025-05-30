@@ -972,6 +972,13 @@ function Game:mousereleased(x, y, button)
     end
 end
 
+function Game:wheelmoved(x, y)
+    if self.state == "editor" then
+        -- Pass wheel events to the editor for zooming
+        self.editorMode:wheelmoved(x, y)
+    end
+end
+
 function Game:textinput(text)
     if self.state == "editor" then
         -- Pass text input to the editor
