@@ -63,7 +63,7 @@ function MapEditor:new()
     
     -- Available entity types with metadata for visual display
     self.entityTypes = {
-        {id = "couch", name = "Couch", color = {0.8, 0.5, 0.3}, width = 2, height = 1, description = "A comfortable couch"},
+        {id = "couch", name = "Couch", color = {0.8, 0.5, 0.3}, width = 3, height = 1, description = "A comfortable couch"},
         {id = "tv", name = "TV", color = {0.2, 0.2, 0.2}, width = 1, height = 1, description = "Television"},
         {id = "coffee_table", name = "Coffee Table", color = {0.6, 0.4, 0.2}, width = 2, height = 1, description = "Small table"},
         {id = "cupboard", name = "Cupboard", color = {0.5, 0.3, 0.2}, width = 1, height = 2, description = "Storage cupboard"},

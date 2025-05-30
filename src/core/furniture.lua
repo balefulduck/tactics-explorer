@@ -29,7 +29,7 @@ function Furniture.create(furnitureType, grid, gridX, gridY, options)
             sittable = true,
             cover = true,
             comfort = 3,
-            dimensions = "1x3",
+            dimensions = "3x1",
             height = 2,
             penetration = {
                 ["9MM"] = 0.75,
