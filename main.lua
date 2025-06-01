@@ -1,10 +1,12 @@
 -- Main entry point for the LÖVE2D game
 local Game = require("src.core.game")
 local IntroScreen = require("src.screens.introScreen")
+local SettingsMenu = require("src.ui.settingsMenu")
 
 -- Global variables
 local game
 local introScreen
+local settingsMenu
 
 -- Check if intro screen should be shown
 local showIntro = false
@@ -35,6 +37,9 @@ function love.load()
     if showIntro then
         introScreen = IntroScreen:new()
     end
+    
+    -- Initialize settings menu
+    settingsMenu = SettingsMenu:init()
 end
 
 function love.update(dt)
@@ -43,6 +48,9 @@ function love.update(dt)
         introScreen:update(dt)
         return
     end
+    
+    -- Update settings menu
+    settingsMenu:update(dt)
     
     -- Update game state
     game:update(dt)
@@ -56,6 +64,9 @@ function love.draw()
     if introScreen and introScreen:isActive() then
         introScreen:draw()
     end
+    
+    -- Draw settings menu on top if active
+    settingsMenu:draw()
 end
 
 function love.keypressed(key)
@@ -66,13 +77,13 @@ function love.keypressed(key)
         end
     end
     
+    -- Handle settings menu key presses
+    if settingsMenu:keypressed(key) then
+        return -- Key was handled by settings menu
+    end
+    
     -- Handle key press events
     game:keypressed(key)
-    
-    -- Quit the game if escape is pressed
-    if key == "escape" then
-        love.event.quit()
-    end
 end
 
 function love.keyreleased(key)

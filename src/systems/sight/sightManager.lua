@@ -10,6 +10,15 @@ function SightManager:new(map)
     -- Store reference to the map
     self.map = map
     
+    -- Cache for walls and obstacles to avoid rescanning the map
+    self.wallCache = nil
+    
+    -- Track player position for incremental updates
+    self.lastPlayerPos = nil
+    
+    -- Flag to indicate if wall cache needs updating
+    self.wallCacheNeedsUpdate = true
+    
     -- Sight constants (easily tweakable)
     self.constants = {
         BASE_SIGHT_RANGE = 100,        -- Perfect visibility range
@@ -351,20 +360,55 @@ function SightManager:getLinePoints(x1, y1, x2, y2)
     return points
 end
 
+-- Cache all walls and obstacles on the map
+function SightManager:updateWallCache()
+    if not self.map then return end
+    
+    print("Updating wall cache...")
+    self.wallCache = {}
+    
+    -- Scan the map once for all walls and obstacles
+    for x = 1, self.map.width do
+        for y = 1, self.map.height do
+            -- Check if this is a wall or obstacle that affects sight
+            local tile = self.map:getTile(x, y)
+            if tile and tile.tileType == "wall" then
+                table.insert(self.wallCache, {x = x, y = y})
+                print("✅ Added wall at (" .. x .. "," .. y .. ") to cache")
+            end
+        end
+    end
+    
+    print("Wall cache updated. Found " .. #self.wallCache .. " walls.")
+    self.wallCacheNeedsUpdate = false
+end
+
 -- Update sight for all entities
 function SightManager:updateAllSight()
-    -- DEBUGGING: Let's add a very obvious print statement to confirm this is running
-    print("**** UPDATING ALL SIGHT ****")
+    -- Reset the occlusion check flag to ensure we check values again
+    self.hasCheckedOcclusion = false
     
     -- Clear cache every update to ensure fresh calculations
     self.losCache = {}
     
+    -- Update wall cache if needed
+    if self.wallCacheNeedsUpdate or not self.wallCache then
+        self:updateWallCache()
+    end
+    
     -- Find player entity
     local player = nil
-    for _, entity in ipairs(self.map.entities or {}) do
-        if entity.isPlayerControlled then
-            player = entity
-            break
+    
+    -- First check if there's a player reference in the map
+    if self.map.game and self.map.game.player then
+        player = self.map.game.player
+    else
+        -- Fallback to searching entities
+        for _, entity in ipairs(self.map.entities or {}) do
+            if entity.isPlayerControlled then
+                player = entity
+                break
+            end
         end
     end
     
@@ -373,62 +417,102 @@ function SightManager:updateAllSight()
         return
     end
     
-    print("Player found at position: " .. player.gridX .. "," .. player.gridY)
+    print("Found player at position: (" .. player.gridX .. "," .. player.gridY .. ")")
     
-    -- Reset visibility map to fully visible
-    if self.map then
-        print("Initializing visibility map for " .. self.map.width .. "x" .. self.map.height .. " map")
+    -- Initialize visibility map if it doesn't exist
+    if not self.visibilityMap then
+        print("Creating new visibility map")
         self.visibilityMap = {}
-        for x = 1, self.map.width do
-            self.visibilityMap[x] = {}
-            for y = 1, self.map.height do
-                self.visibilityMap[x][y] = {
-                    ambientOcclusion = 0, -- Level 0: No occlusion (fully visible)
-                    visible = true,      -- Tile is visible
-                    explored = true      -- Tile has been seen before
-                }
-            end
-        end
-    else
+    end
+    
+    if not self.map then
         print("ERROR: No map reference in SightManager!")
         return
     end
     
-    print("Map dimensions: " .. self.map.width .. "x" .. self.map.height)
-    
-    -- Find all walls
-    local walls = {}
+    -- Reset all ambient occlusion values to 0 before recalculating
+    print("Resetting ambient occlusion values")
     for x = 1, self.map.width do
+        if not self.visibilityMap[x] then
+            self.visibilityMap[x] = {}
+        end
+        
         for y = 1, self.map.height do
-            local tile = self.map:getTile(x, y)
-            if tile and tile.tileType == "wall" then
-                print("Found wall at (" .. x .. "," .. y .. ")")
-                table.insert(walls, {x = x, y = y})
+            if not self.visibilityMap[x][y] then
+                self.visibilityMap[x][y] = {
+                    visible = true,
+                    explored = true
+                }
             end
+            
+            -- Only reset the ambient occlusion value, keep other visibility data
+            self.visibilityMap[x][y].ambientOcclusion = 0
         end
     end
     
-    print("Found " .. #walls .. " walls on the map")
+    print("Map dimensions: " .. self.map.width .. "x" .. self.map.height)
     
-    -- Process each wall to cast shadows
-    local obsX, obsY = player.gridX, player.gridY
-    for _, wall in ipairs(walls) do
-        local wallX, wallY = wall.x, wall.y
-        print("Processing wall at " .. wallX .. "," .. wallY)
+    -- Use the wall cache to cast shadows
+    if not self.wallCache or #self.wallCache == 0 then
+        print("No walls found in cache, updating...")
+        self:updateWallCache()
+    end
+    
+    -- Check if player position has changed
+    local playerMoved = false
+    if not self.lastPlayerPos or 
+       self.lastPlayerPos.x ~= player.gridX or 
+       self.lastPlayerPos.y ~= player.gridY then
+        playerMoved = true
+        self.lastPlayerPos = {x = player.gridX, y = player.gridY}
+        print("Player moved to (" .. player.gridX .. "," .. player.gridY .. ")")
+    end
+    
+    -- Only cast shadows if the player has moved or we're forcing an update
+    if playerMoved then
+        print("Casting shadows from " .. #self.wallCache .. " walls")
         
-        -- Skip walls at the observer's position (should never happen)
-        if wallX ~= obsX or wallY ~= obsY then
-            -- Cast shadow from this wall
-            self:castShadow(obsX, obsY, wallX, wallY)
+        -- Cast shadows from each wall in the cache
+        for _, wall in ipairs(self.wallCache) do
+            -- Only process walls within a reasonable distance from player
+            local distToWall = math.sqrt((wall.x - player.gridX)^2 + (wall.y - player.gridY)^2)
+            if distToWall <= 15 then -- Only process walls within 15 tiles
+                self:castShadow(player.gridX, player.gridY, wall.x, wall.y)
+            end
         end
+    else
+        print("Player hasn't moved, skipping shadow recalculation")
+    end
+    
+    -- Debug: Check if any occlusion values were set
+    local hasOcclusion = false
+    for x = 1, self.map.width do
+        if self.visibilityMap[x] then
+            for y = 1, self.map.height do
+                if self.visibilityMap[x][y] and self.visibilityMap[x][y].ambientOcclusion and self.visibilityMap[x][y].ambientOcclusion > 0 then
+                    hasOcclusion = true
+                    break
+                end
+            end
+            if hasOcclusion then break end
+        end
+    end
+    
+    if not hasOcclusion then
+        print("WARNING: No occlusion values were set after shadow casting!")
     end
     
     -- Debug output of the visibility map
-    print("Visibility map for observer at " .. obsX .. "," .. obsY .. ":")
+    print("Visibility map for observer at (" .. player.gridX .. "," .. player.gridY .. "):")
     for y = 1, self.map.height do
         local row = ""
         for x = 1, self.map.width do
-            row = row .. self.visibilityMap[x][y] .. " "
+            if self.visibilityMap[x] and self.visibilityMap[x][y] then
+                local occlusion = self.visibilityMap[x][y].ambientOcclusion or 0
+                row = row .. occlusion .. " "
+            else
+                row = row .. "? "
+            end
         end
         print(row)
     end
@@ -505,7 +589,7 @@ function SightManager:applyAllAmbientOcclusion(obsX, obsY)
     end
 end
 
--- Cast a shadow from a wall to create ambient occlusion
+-- Cast a shadow from a wall to create ambient occlusion using Bresenham's algorithm
 function SightManager:castShadow(obsX, obsY, wallX, wallY)
     if not self.map then 
         print("ERROR: No map in castShadow")
@@ -515,128 +599,77 @@ function SightManager:castShadow(obsX, obsY, wallX, wallY)
     local mapWidth = self.map.width
     local mapHeight = self.map.height
     
-    print("🔍 CASTING SHADOW from observer at (" .. obsX .. "," .. obsY .. ") for wall at (" .. wallX .. "," .. wallY .. ")")
-    
-    -- ALWAYS use hard-coded patterns for testing - this guarantees occlusion works
-    -- Force some occlusion values regardless of map size
-    if wallX == 2 and wallY == 3 then
-        print("🎯 Using hard-coded occlusion pattern for wall at (2,3)")
-        
-        if obsX == 1 and obsY == 1 then
-            -- Player at (1,1) looking at wall at (2,3)
-            print("🎯 Player at (1,1) pattern")
-            self:setOcclusion(2, 4, 3) -- Full occlusion
-            self:setOcclusion(3, 4, 2) -- Moderate occlusion
-            self:setOcclusion(3, 5, 3) -- Full occlusion
-            self:setOcclusion(2, 5, 2) -- Moderate occlusion
-            self:setOcclusion(4, 5, 1) -- Light occlusion
-            return
-        elseif obsX == 2 and obsY == 1 then
-            -- Player at (2,1) looking at wall at (2,3)
-            print("🎯 Player at (2,1) pattern")
-            self:setOcclusion(2, 4, 3) -- Full occlusion
-            self:setOcclusion(2, 5, 3) -- Full occlusion
-            self:setOcclusion(1, 4, 2) -- Moderate occlusion
-            self:setOcclusion(3, 4, 2) -- Moderate occlusion
-            self:setOcclusion(1, 5, 1) -- Light occlusion
-            self:setOcclusion(3, 5, 1) -- Light occlusion
-            return
-        elseif obsX == 3 and obsY == 1 then
-            -- Player at (3,1) looking at wall at (2,3)
-            print("🎯 Player at (3,1) pattern")
-            self:setOcclusion(1, 4, 3) -- Full occlusion
-            self:setOcclusion(1, 5, 3) -- Full occlusion
-            self:setOcclusion(2, 4, 2) -- Moderate occlusion
-            self:setOcclusion(2, 5, 2) -- Moderate occlusion
-            return
-        else
-            -- For any other player position, set some test values
-            print("🎯 Using default pattern for player at (" .. obsX .. "," .. obsY .. ")")
-            -- Set occlusion behind the wall regardless of player position
-            self:setOcclusion(2, 4, 3) -- Full occlusion directly behind wall
-            self:setOcclusion(2, 5, 2) -- Moderate occlusion further behind
-            return
-        end
+    -- Skip if wall is too far from observer (optimization)
+    local distToWall = math.sqrt((wallX - obsX)^2 + (wallY - obsY)^2)
+    if distToWall > 10 then
+        return
     end
     
-    -- If we reach here, no hard-coded pattern was applied
-    print("⚠️ No hard-coded pattern matched, using dynamic shadow casting")
-
-    
-    -- For general cases, use line-based shadow casting
-    
-    -- Calculate direction from wall outward (away from observer)
+    -- Calculate direction vector from observer to wall
     local dirX = wallX - obsX
     local dirY = wallY - obsY
     
-    -- Calculate length of direction vector
-    local length = math.sqrt(dirX * dirX + dirY * dirY)
-    if length == 0 then return end
+    -- Calculate the shadow projection point (extend beyond the wall)
+    local maxShadowLength = 10
+    local shadowEndX = wallX + math.floor((dirX / distToWall) * maxShadowLength + 0.5)
+    local shadowEndY = wallY + math.floor((dirY / distToWall) * maxShadowLength + 0.5)
     
-    -- Normalize direction
-    dirX = dirX / length
-    dirY = dirY / length
+    -- Ensure shadow end point is within map bounds
+    shadowEndX = math.max(1, math.min(mapWidth, shadowEndX))
+    shadowEndY = math.max(1, math.min(mapHeight, shadowEndY))
     
-    -- Calculate perpendicular direction for shadow width
-    local perpX = -dirY
-    local perpY = dirX
+    -- Use Bresenham's algorithm to get all points along the shadow line
+    local shadowPoints = self:getLinePoints(wallX, wallY, shadowEndX, shadowEndY)
     
-    -- Maximum shadow distance
-    local maxDist = 3
+    -- Maximum occlusion level
+    local maxLevel = 3
     
-    -- For each distance step from the wall
-    for dist = 1, maxDist do
-        -- Projected position at this distance
-        local projX = wallX + math.floor(dirX * dist + 0.5)
-        local projY = wallY + math.floor(dirY * dist + 0.5)
-        
-        -- Skip if projected position is outside map bounds
-        if projX < 1 or projX > mapWidth or projY < 1 or projY > mapHeight then
-            goto continue
-        end
-        
-        -- Calculate occlusion level based on distance
-        local level = 4 - dist  -- Level 3 at dist=1, Level 2 at dist=2, Level 1 at dist=3
-        if level <= 0 then goto continue end
-        
-        -- Set occlusion level at the projected position
-        self:setOcclusion(projX, projY, level)
-        
-        -- Calculate shadow width at this distance
-        -- Shadow spreads wider as it gets further from the wall
-        local width = math.ceil(dist / 2)
-        
-        -- For each position in the width of the shadow
-        for w = 1, width do
-            -- Calculate positions on either side of the center projection
-            local leftX = projX + math.floor(perpX * w + 0.5)
-            local leftY = projY + math.floor(perpY * w + 0.5)
+    -- Set occlusion for each point along the shadow line
+    for i, point in ipairs(shadowPoints) do
+        -- Skip the wall itself (first point)
+        if i > 1 then
+            local x, y = point.x, point.y
             
-            local rightX = projX - math.floor(perpX * w + 0.5)
-            local rightY = projY - math.floor(perpY * w + 0.5)
+            -- Calculate distance from wall (i-1 because we skip the first point)
+            local distFromWall = i - 1
             
-            -- Reduce occlusion level as we move away from center
-            local sideLevel = level - math.floor(w/2)
-            if sideLevel <= 0 then goto continue_width end
+            -- Calculate occlusion level (decreases with distance)
+            local level = maxLevel - math.floor((distFromWall - 1) / 2)
+            if level <= 0 then break end
             
-            -- Apply occlusion to left and right sides if within bounds
-            if leftX >= 1 and leftX <= mapWidth and leftY >= 1 and leftY <= mapHeight then
-                self:setOcclusion(leftX, leftY, sideLevel)
+            -- Set occlusion at the center point
+            self:setOcclusion(x, y, level)
+            
+            -- Calculate shadow width at this distance (wider as it gets further)
+            local width = math.ceil(distFromWall / 2)
+            
+            -- Calculate perpendicular vector for shadow width
+            local perpX = -dirY / distToWall
+            local perpY = dirX / distToWall
+            
+            -- Add width to the shadow on both sides
+            for w = 1, width do
+                -- Calculate positions on either side of the center
+                local leftX = x + math.floor(perpX * w + 0.5)
+                local leftY = y + math.floor(perpY * w + 0.5)
+                
+                local rightX = x - math.floor(perpX * w + 0.5)
+                local rightY = y - math.floor(perpY * w + 0.5)
+                
+                -- Reduce occlusion level for side points
+                local sideLevel = level - math.floor(w/2)
+                if sideLevel <= 0 then break end
+                
+                -- Set occlusion for side points if within bounds
+                if leftX >= 1 and leftX <= mapWidth and leftY >= 1 and leftY <= mapHeight then
+                    self:setOcclusion(leftX, leftY, sideLevel)
+                end
+                
+                if rightX >= 1 and rightX <= mapWidth and rightY >= 1 and rightY <= mapHeight then
+                    self:setOcclusion(rightX, rightY, sideLevel)
+                end
             end
-            
-            if rightX >= 1 and rightX <= mapWidth and rightY >= 1 and rightY <= mapHeight then
-                self:setOcclusion(rightX, rightY, sideLevel)
-            end
-            
-            ::continue_width::
         end
-        
-        ::continue::
-    end
-    
-    -- Output debug info
-    if self.debug then
-        print("Shadow cast from wall at (" .. wallX .. "," .. wallY .. ") from observer at (" .. obsX .. "," .. obsY .. ")")
     end
 end
 
@@ -776,25 +809,63 @@ function SightManager:drawAmbientOcclusion()
         self.visibilityMap = {}
     end
     
-    -- ALWAYS force test values for debugging - this ensures we see something
-    print("⚠️ Setting test occlusion values for debugging")
+    -- We'll use the existing visibility map created by updateAllSight
+    -- Only check if we have valid data, don't force test values anymore
     
-    -- Force some test values for debugging
-    if not self.visibilityMap[2] then self.visibilityMap[2] = {} end
-    if not self.visibilityMap[2][4] then self.visibilityMap[2][4] = {} end
-    self.visibilityMap[2][4].ambientOcclusion = 3 -- Full occlusion
+        -- Find player entity to determine position-based occlusion
+    local player = nil
     
-    if not self.visibilityMap[2][5] then self.visibilityMap[2][5] = {} end
-    self.visibilityMap[2][5].ambientOcclusion = 2 -- Medium occlusion
+    -- First check if there's a player reference in the map
+    if self.map.game and self.map.game.player then
+        player = self.map.game.player
+    else
+        -- Fallback to searching entities
+        for _, entity in ipairs(self.map.entities or {}) do
+            if entity.isPlayerControlled then
+                player = entity
+                break
+            end
+        end
+    end
     
-    if not self.visibilityMap[3] then self.visibilityMap[3] = {} end
-    if not self.visibilityMap[3][4] then self.visibilityMap[3][4] = {} end
-    self.visibilityMap[3][4].ambientOcclusion = 1 -- Light occlusion
+    if player then
+        -- Only print this once to reduce spam
+        if not self.lastPlayerPos or self.lastPlayerPos.x ~= player.gridX or self.lastPlayerPos.y ~= player.gridY then
+            print("Player position for occlusion: (" .. player.gridX .. "," .. player.gridY .. ")")
+            self.lastPlayerPos = {x = player.gridX, y = player.gridY}
+        end
+    else
+        if not self.playerNotFoundWarningShown then
+            print("⚠️ No player found for occlusion calculation")
+            self.playerNotFoundWarningShown = true
+        end
+    end
     
-    -- Draw red outline for debug visibility
-    love.graphics.setColor(1, 0, 0, 1)
-    love.graphics.rectangle("line", 0, 0, self.map.width * self.map.grid.tileSize, self.map.height * self.map.grid.tileSize)
-    love.graphics.setColor(1, 1, 1, 1)
+    -- Update wall cache if needed
+    if self.wallCacheNeedsUpdate or not self.wallCache then
+        self:updateWallCache()
+    end
+    
+    -- Only check for occlusion values once at startup, not every frame
+    if not self.hasCheckedOcclusion then
+        local hasOcclusion = false
+        for x = 1, self.map.width do
+            if self.visibilityMap[x] then
+                for y = 1, self.map.height do
+                    if self.visibilityMap[x] and self.visibilityMap[x][y] and self.visibilityMap[x][y].ambientOcclusion and self.visibilityMap[x][y].ambientOcclusion > 0 then
+                        print("Found occlusion level " .. self.visibilityMap[x][y].ambientOcclusion .. " at (" .. x .. "," .. y .. ")")
+                        hasOcclusion = true
+                    end
+                end
+            end
+        end
+        
+        if not hasOcclusion then
+            print("⚠️ No occlusion values found in visibility map!")
+        end
+        self.hasCheckedOcclusion = true
+    end
+    
     
     -- Draw ambient occlusion overlays
     for x = 1, self.map.width do

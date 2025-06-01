@@ -12,6 +12,9 @@ function TestMap.create(game)
     -- Create a new map with dimensions 5x5
     local map = Map:new(game.grid, 5, 5)
     
+    -- Store the game reference in the map
+    map.game = game
+    
     -- Fill the map with stone floor tiles
     for x = 1, map.width do
         for y = 1, map.height do
@@ -19,16 +22,25 @@ function TestMap.create(game)
         end
     end
     
-    -- Add a wall at position B3 (2,3)
+    -- Add walls for testing ambient occlusion
     map:setTile(2, 3, "wall")
     print("⭐ Added wall at position (2,3)")
     
-    -- Verify wall was added correctly
-    local wallTile = map:getTile(2, 3)
-    if wallTile and wallTile.tileType == "wall" then
-        print("✅ Wall tile confirmed at (2,3)")
-    else
-        print("❌ ERROR: Wall tile not set correctly at (2,3)")
+    -- Add more walls to create an interesting occlusion pattern
+    map:setTile(3, 3, "wall")
+    print("⭐ Added wall at position (3,3)")
+    
+    map:setTile(4, 3, "wall")
+    print("⭐ Added wall at position (4,3)")
+    
+    -- Verify walls were added correctly
+    for x = 2, 4 do
+        local wallTile = map:getTile(x, 3)
+        if wallTile and wallTile.tileType == "wall" then
+            print("✅ Wall tile confirmed at (" .. x .. ",3)")
+        else
+            print("❌ ERROR: Wall tile not set correctly at (" .. x .. ",3)")
+        end
     end
     
     -- Create a custom player entity with fixed movement handling
@@ -80,7 +92,8 @@ function TestMap.create(game)
     player.move = function(self, dx, dy)
         local moved = originalMove(self, dx, dy)
         if moved and map.sightManager then
-            print("⭐ Player moved, updating sight")
+            -- Force a complete recalculation of ambient occlusion
+            map.sightManager.visibilityMap = nil -- Reset visibility map to force full recalculation
             map.sightManager:updateAllSight()
         end
         return moved
@@ -93,10 +106,8 @@ function TestMap.create(game)
             originalUpdate(self, dt)
         end
         
-        -- Update sight on every frame for testing
-        if self.sightManager then
-            self.sightManager:updateAllSight()
-        end
+        -- Don't update sight every frame - that causes infinite loops
+        -- Sight updates will happen on player movement instead
     end
     
     -- Override the map's draw function to add ambient occlusion
