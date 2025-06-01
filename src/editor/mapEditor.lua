@@ -56,6 +56,10 @@ function MapEditor:new()
     self.tileCreator = TileCreator:new()
     self.entityComposer = EntityComposer:new()
     
+    -- Pass the editorTabs reference to the other editors
+    self.tileCreator.editorTabs = self.editorTabs
+    self.entityComposer.editorTabs = self.editorTabs
+    
     -- UI state
     self.selectedTool = "tile"  -- tile, entity, erase, toggle
     self.selectedTileType = "floor"  -- floor, wall, window
@@ -305,19 +309,23 @@ function MapEditor:draw()
     
     -- If we get here, we're drawing the map editor tab
     
-    -- Define map container (left 80% of screen)
-    local mapContainerWidth = love.graphics.getWidth() * 0.80
-    local mapContainerHeight = love.graphics.getHeight()
+    -- Get tab height to properly position map container
+    local tabHeight = self.editorTabs.tabHeight
     
-    -- Create a stencil to constrain map rendering to the left 80% of the screen
+    -- Define map container (left 80% of screen, starting below tabs)
+    local mapContainerWidth = love.graphics.getWidth() * 0.80
+    local mapContainerHeight = love.graphics.getHeight() - tabHeight
+    local mapContainerY = tabHeight
+    
+    -- Create a stencil to constrain map rendering to the left 80% of screen below tabs
     love.graphics.stencil(function()
-        love.graphics.rectangle("fill", 0, 0, mapContainerWidth, mapContainerHeight)
+        love.graphics.rectangle("fill", 0, mapContainerY, mapContainerWidth, mapContainerHeight)
     end, "replace", 1)
     love.graphics.setStencilTest("greater", 0)
     
     -- Apply zoom and pan transformation within the map container
     love.graphics.push()
-    love.graphics.translate(self.panX, self.panY)
+    love.graphics.translate(self.panX, self.panY + mapContainerY) -- Add tabHeight offset to Y translation
     love.graphics.scale(self.zoomLevel, self.zoomLevel)
     
     -- Draw the map
@@ -551,10 +559,8 @@ function MapEditor:drawUI()
             -- Draw entity dimensions
             local width, height = self:getEntityDimensions(entityType.id)
             local dimText = width .. "x" .. height
-            local dimWidth = self.labelFont:getWidth(dimText)
-            local dimX = buttonX + (self.buttonSize - dimWidth) / 2
             love.graphics.setColor(0.8, 0.8, 0.8, 1)
-            love.graphics.print(dimText, dimX, buttonY + self.buttonSize + 15)
+            love.graphics.print(dimText, buttonX, buttonY + self.buttonSize + 15)
         end
         
         -- Update y position based on entity buttons
@@ -996,6 +1002,23 @@ end
 function MapEditor:mousepressed(x, y, button)
     if not self.active then return end
     
+    -- Check if tile creator or entity composer is active
+    if self.tileCreator.active then
+        local tabClicked = self.tileCreator:mousepressed(x, y, button)
+        if tabClicked then
+            self:handleTabClick(tabClicked)
+        end
+        return
+    end
+    
+    if self.entityComposer.active then
+        local tabClicked = self.entityComposer:mousepressed(x, y, button)
+        if tabClicked then
+            self:handleTabClick(tabClicked)
+        end
+        return
+    end
+    
     -- Handle tab clicks first
     local selectedTab = self.editorTabs:mousepressed(x, y, button)
     if selectedTab then
@@ -1219,25 +1242,51 @@ function MapEditor:keypressed(key)
         return
     end
     
-    -- Tab key cycles through the editor tabs
+    -- Handle tab key to cycle through editor modes
     if key == "tab" then
-        local currentTab = self.editorTabs:getActiveTab()
-        if currentTab == "map" then
-            self.editorTabs:setActiveTab("tile")
-            self.tileCreator.active = true
-            self.entityComposer.active = false
-        elseif currentTab == "tile" then
-            self.editorTabs:setActiveTab("entity")
-            self.tileCreator.active = false
-            self.entityComposer.active = true
-        else -- entity
-            self.editorTabs:setActiveTab("map")
-            self.tileCreator.active = false
-            self.entityComposer.active = false
+        local activeTab = self.editorTabs:getActiveTab()
+        
+        if activeTab == "map" then
+            self:handleTabClick("tile")
+        elseif activeTab == "tile" then
+            self:handleTabClick("entity")
+        elseif activeTab == "entity" then
+            self:handleTabClick("map")
         end
         print("Tab pressed: Active tab: " .. self.editorTabs:getActiveTab())
     end
 end
+-- Handle tab clicks and switching between editors
+function MapEditor:handleTabClick(tabId)
+    -- Update the active tab in the editor tabs
+    self.editorTabs:setActiveTab(tabId)
+    
+    -- Activate/deactivate the appropriate editors based on the tab
+    if tabId == "map" then
+        -- Activate map editor, deactivate others
+        self.tileCreator.active = false
+        self.entityComposer.active = false
+    elseif tabId == "tile" then
+        -- Activate tile creator, deactivate others
+        self.tileCreator.active = true
+        self.entityComposer.active = false
+        -- Initialize tile creator if needed
+        if not self.tileCreator.grid then
+            self.tileCreator:initialize()
+        end
+    elseif tabId == "entity" then
+        -- Activate entity composer, deactivate others
+        self.tileCreator.active = false
+        self.entityComposer.active = true
+        -- Initialize entity composer if needed
+        if not self.entityComposer.grid then
+            self.entityComposer:initialize()
+        end
+    end
+    
+    print("Switched to tab: " .. tabId)
+end
+
 function MapEditor:textinput(text)
     if not self.active then return end
     
@@ -1938,13 +1987,14 @@ end
 
 -- Check if mouse is over the map area
 function MapEditor:isMouseOverMap()
-    -- First check if mouse is within the map container (left 80% of screen)
+    -- First check if mouse is within the map container (left 80% of screen, below tabs)
     local mx, my = love.mouse.getPosition()
     local mapContainerWidth = love.graphics.getWidth() * 0.80
+    local tabHeight = self.editorTabs.tabHeight
     
-    -- Only consider mouse over map if it's within the left 85% of the screen
-    -- and within the valid grid coordinates
-    return mx < mapContainerWidth and
+    -- Only consider mouse over map if it's within the left 80% of the screen,
+    -- below the tab bar, and within the valid grid coordinates
+    return mx < mapContainerWidth and my > tabHeight and
            self.gridX >= 1 and self.gridX <= self.width and
            self.gridY >= 1 and self.gridY <= self.height
 end

@@ -64,7 +64,7 @@ function EditorTabs:draw()
 end
 
 function EditorTabs:drawRuggedRectangle(x, y, width, height, isActive)
-    -- Draw slightly irregular rectangle for rugged appearance
+    -- Draw clean rectangle for stable appearance
     love.graphics.setLineWidth(2)
     
     -- Fill
@@ -73,38 +73,21 @@ function EditorTabs:drawRuggedRectangle(x, y, width, height, isActive)
     -- Border
     love.graphics.setColor(0, 0, 0, 1)
     
-    -- Draw border with slight irregularities for rugged look
-    local jitter = 1
-    local points = {}
-    
+    -- Draw border with clean lines for stable appearance
     -- Top line
-    table.insert(points, x)
-    table.insert(points, y + math.random(-jitter, jitter))
-    table.insert(points, x + width)
-    table.insert(points, y + math.random(-jitter, jitter))
+    love.graphics.line(x, y, x + width, y)
     
     -- Right line
-    table.insert(points, x + width + math.random(-jitter, jitter))
-    table.insert(points, y)
-    table.insert(points, x + width + math.random(-jitter, jitter))
-    table.insert(points, y + height)
+    love.graphics.line(x + width, y, x + width, y + height)
     
     -- Bottom line (not drawn if active tab)
     if not isActive then
-        table.insert(points, x + width)
-        table.insert(points, y + height + math.random(-jitter, jitter))
-        table.insert(points, x)
-        table.insert(points, y + height + math.random(-jitter, jitter))
+        love.graphics.line(x + width, y + height, x, y + height)
     end
     
     -- Left line
-    table.insert(points, x + math.random(-jitter, jitter))
-    table.insert(points, y + height)
-    table.insert(points, x + math.random(-jitter, jitter))
-    table.insert(points, y)
+    love.graphics.line(x, y + height, x, y)
     
-    -- Draw the border
-    love.graphics.line(points)
     love.graphics.setLineWidth(1)
 end
 

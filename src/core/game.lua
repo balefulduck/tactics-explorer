@@ -49,23 +49,29 @@ function Game:load()
     self.camera = Camera:new(self.width, self.height)
     self.ui = UI:new(self)
     
-    -- Create a room map (12x14 grid)
-    self.currentMap = Map:new(self.grid, 12, 14)
+    -- Load the test map instead of creating the default room
+    self:loadTestMap()
     
-    -- Define window positions (centered on east and south walls)
-    local windowPositions = {
-        {x = 12, y = 7},  -- East wall, centered
-        {x = 6, y = 14}   -- South wall, centered
-    }
-    
-    -- Create the room with windows
-    self.currentMap:createRoomMap(windowPositions)
-    
-    -- Create player in the center of the room
-    self.player = Player:new(self.grid, 6, 7)
-    
-    -- Add furniture to the room
-    self:setupRoom()
+    -- If test map loading fails, fall back to the default room
+    if not self.currentMap then
+        -- Create a room map (12x14 grid)
+        self.currentMap = Map:new(self.grid, 12, 14)
+        
+        -- Define window positions (centered on east and south walls)
+        local windowPositions = {
+            {x = 12, y = 7},  -- East wall, centered
+            {x = 6, y = 14}   -- South wall, centered
+        }
+        
+        -- Create the room with windows
+        self.currentMap:createRoomMap(windowPositions)
+        
+        -- Create player in the center of the room
+        self.player = Player:new(self.grid, 6, 7)
+        
+        -- Add furniture to the room
+        self:setupRoom()
+    end
     
     -- Initialize layout dimensions
     self:initializeLayout()
@@ -984,6 +990,20 @@ function Game:textinput(text)
         -- Pass text input to the editor
         self.editorMode:textinput(text)
     end
+end
+
+function Game:loadTestMap()
+    -- Load the test map module
+    local TestMap = require("src.maps.testMap")
+    
+    -- Create the test map
+    self.currentMap = TestMap.create(self)
+    
+    -- The player is already created and added to the map in the TestMap.create function
+    -- and assigned to the game.player property
+    
+    print("Test map loaded successfully")
+    return true
 end
 
 function Game:loadMap(mapName)

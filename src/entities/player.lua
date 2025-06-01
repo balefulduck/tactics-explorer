@@ -2,20 +2,31 @@
 local Player = {}
 Player.__index = Player
 
-function Player:new(grid, gridX, gridY)
+function Player:new(map, gridX, gridY)
     local self = setmetatable({}, Player)
     
-    self.grid = grid
+    -- Handle both map and grid objects
+    if map.grid then
+        -- If a map is passed, get the grid from it
+        self.grid = map.grid
+        self.map = map
+    else
+        -- If a grid is passed directly
+        self.grid = map
+    end
+    
     self.gridX = gridX or 1
     self.gridY = gridY or 1
+    self.gridWidth = 1  -- Width in grid cells
+    self.gridHeight = 1 -- Height in grid cells
     
     -- Calculate world position based on grid position
-    self.x, self.y = grid:gridToWorld(self.gridX, self.gridY)
+    self.x, self.y = self.grid:gridToWorld(self.gridX, self.gridY)
     
     -- Player attributes
     self.moveSpeed = 4  -- Grid cells per second
     self.color = {0.2, 0.2, 0.2, 1}  -- Dark gray (monochrome)
-    self.size = (grid.tileSize - 4) * 0.8  -- Slightly smaller than a tile, accounting for padding
+    self.size = (self.grid.tileSize - 4) * 0.8  -- Slightly smaller than a tile, accounting for padding
     
     -- Movement state
     self.isMoving = false
@@ -55,8 +66,13 @@ function Player:move(dx, dy)
     local newGridY = self.gridY + dy
     
     -- Check if the new position is valid and walkable
-    -- In a real game, you'd pass the current map to check walkability
-    if self.grid:isValidPosition(newGridX, newGridY) then
+    -- First check if it's within map boundaries
+    if self.map and (newGridX < 1 or newGridX > self.map.width or newGridY < 1 or newGridY > self.map.height) then
+        return false
+    end
+    
+    -- Then check if it's walkable using the grid
+    if self.grid:isWalkable(newGridX, newGridY) then
         -- Update grid position
         self.gridX = newGridX
         self.gridY = newGridY

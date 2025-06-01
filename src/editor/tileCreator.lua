@@ -16,6 +16,8 @@ function TileCreator:new()
     self.grid = nil
     self.previewGrid = nil
     
+    -- Reference to editorTabs (will be set by MapEditor)
+    
     -- New tile properties
     self.newTileType = {
         id = "custom_tile",
@@ -111,6 +113,11 @@ function TileCreator:draw()
     -- Draw background
     love.graphics.setColor(0.93, 0.93, 0.93, 1) -- #eeeeee
     love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
+    
+    -- Draw the tabs at the top if available
+    if self.editorTabs then
+        self.editorTabs:draw()
+    end
     
     -- Draw panel background
     love.graphics.setColor(0.88, 0.88, 0.88, 1) -- Slightly darker
@@ -308,6 +315,15 @@ end
 function TileCreator:mousepressed(x, y, button)
     if not self.active then return end
     
+    -- Handle tab clicks if tabs are available
+    if self.editorTabs then
+        local clickedTab = self.editorTabs:mousepressed(x, y, button)
+        if clickedTab then
+            -- Return the clicked tab ID to the map editor to handle the switch
+            return clickedTab
+        end
+    end
+    
     if button == 1 then -- Left click
         -- Check if clicking on a field
         for name, field in pairs(self.fields) do
@@ -479,6 +495,11 @@ end
 function TileCreator:cancel()
     -- Return to map editor without saving
     self.active = false
+    
+    -- Switch back to map editor tab if tabs are available
+    if self.editorTabs then
+        self.editorTabs:setActiveTab("map")
+    end
 end
 
 return TileCreator

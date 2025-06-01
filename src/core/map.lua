@@ -54,8 +54,12 @@ function Map:addEntity(entity)
     
     -- If the entity is not walkable, update the walkable property of the tiles it occupies
     if not entity.walkable then
-        for y = entity.gridY, entity.gridY + entity.height - 1 do
-            for x = entity.gridX, entity.gridX + entity.width - 1 do
+        -- Use gridWidth/gridHeight if available, otherwise fall back to width/height
+        local entityWidth = entity.gridWidth or entity.width or 1
+        local entityHeight = entity.gridHeight or entity.height or 1
+        
+        for y = entity.gridY, entity.gridY + entityHeight - 1 do
+            for x = entity.gridX, entity.gridX + entityWidth - 1 do
                 local tile = self:getTile(x, y)
                 if tile then
                     tile.walkable = false

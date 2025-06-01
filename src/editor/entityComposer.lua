@@ -15,6 +15,8 @@ function EntityComposer:new()
     self.tileSize = 64
     self.grid = nil
     
+    -- Reference to editorTabs (will be set by MapEditor)
+    
     -- New entity properties
     self.newEntity = {
         id = "custom_entity",
@@ -175,6 +177,11 @@ function EntityComposer:draw()
     -- Draw background
     love.graphics.setColor(0.93, 0.93, 0.93, 1) -- #eeeeee
     love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
+    
+    -- Draw the tabs at the top if available
+    if self.editorTabs then
+        self.editorTabs:draw()
+    end
     
     -- Draw panel background
     love.graphics.setColor(0.88, 0.88, 0.88, 1) -- Slightly darker
@@ -388,6 +395,15 @@ end
 function EntityComposer:mousepressed(x, y, button)
     if not self.active then return end
     
+    -- Handle tab clicks if tabs are available
+    if self.editorTabs then
+        local clickedTab = self.editorTabs:mousepressed(x, y, button)
+        if clickedTab then
+            -- Return the clicked tab ID to the map editor to handle the switch
+            return clickedTab
+        end
+    end
+    
     if button == 1 then -- Left click
         -- Check if clicking on a field
         for name, field in pairs(self.fields) do
@@ -519,32 +535,43 @@ function EntityComposer:textinput(text)
 end
 
 function EntityComposer:saveEntity()
-    -- Validate fields
-    if self.fields.id.value == "" then
-        -- Show error
-        return
-    end
+    -- Create a new entity type
+    print("Saving entity: " .. self.newEntity.id)
     
-    -- Create the entity config
-    local entityConfig = {
-        id = self.fields.id.value,
-        name = self.fields.name.value,
+    -- Add to entity types list
+    local entityType = {
+        id = self.newEntity.id,
+        name = self.newEntity.name,
         width = self.newEntity.width,
         height = self.newEntity.height,
-        color = self.newEntity.color,
-        description = self.fields.description.value,
-        tiles = self.newEntity.tiles
+        description = self.newEntity.description,
+        tiles = {}
     }
     
-    -- Return to map editor
-    self.active = false
+    -- Copy tiles
+    for y = 1, self.newEntity.height do
+        entityType.tiles[y] = {}
+        for x = 1, self.newEntity.width do
+            entityType.tiles[y][x] = self.newEntity.tiles[y][x]
+        end
+    end
     
-    return entityConfig
+    -- Add to furniture types
+    Furniture.registerType(entityType)
+    
+    -- Close the entity composer
+    self.active = false
 end
 
 function EntityComposer:cancel()
-    -- Return to map editor without saving
+    -- Close the entity composer and return to previous screen
+    print("Canceling entity creation")
     self.active = false
+    
+    -- Switch back to map editor tab if tabs are available
+    if self.editorTabs then
+        self.editorTabs:setActiveTab("map")
+    end
 end
 
 return EntityComposer

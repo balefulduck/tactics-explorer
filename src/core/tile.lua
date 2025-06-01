@@ -8,14 +8,84 @@ Tile.__index = Tile
 
 -- Define all tile configurations in one place for better scalability
 local tileConfigs = {
-    floor = {
-        name = "Floor",
-        color = {0.93, 0.93, 0.93, 1}, -- White
-        borderColor = {0.85, 0.85, 0.85, 1},
+    -- Floor tiles group - all floor tiles have height 0 and dimensions 1x1
+    stoneFloor = {
+        name = "Stone Floor",
+        color = {0.85, 0.85, 0.85, 1}, -- Light gray
+        borderColor = {0.7, 0.7, 0.7, 1}, -- Darker gray border
         walkable = true,
         showLabel = false,
+        height = 0,
+        stepSound = 1.1,
+        events = {
+            { name = "shoeUntie", chance = 0.05 }
+        },
+        infoscreenImage = "assets/images/stonefloor.jpg",
+        flavorText = "How long will these stones remain?",
         drawDetails = function(self, x, y, tileSize)
-            -- No special rendering for floor
+            -- Stone floor rendering - subtle texture
+            love.graphics.setColor(0.8, 0.8, 0.8, 1)
+            local padding = 2
+            local innerX = x + padding
+            local innerY = y + padding
+            local innerSize = tileSize - (padding * 2)
+            
+            -- Draw a subtle stone pattern
+            for i = 0, 2 do
+                for j = 0, 2 do
+                    -- Randomize stone color slightly
+                    local shade = 0.75 + (((i+j) % 3) * 0.05)
+                    love.graphics.setColor(shade, shade, shade, 1)
+                    
+                    -- Draw stone blocks with small gaps
+                    love.graphics.rectangle("fill", 
+                        innerX + (i * innerSize/3) + 1, 
+                        innerY + (j * innerSize/3) + 1, 
+                        innerSize/3 - 2, 
+                        innerSize/3 - 2)
+                end
+            end
+        end
+    },
+    grassFloor = {
+        name = "Grass",
+        color = {0.7, 0.9, 0.7, 1}, -- Light green
+        borderColor = {0.5, 0.7, 0.5, 1}, -- Darker green border
+        walkable = true,
+        showLabel = false,
+        height = 0,
+        stepSound = 0.5,
+        events = {
+            { name = "shoeUntie", chance = 0.008 }
+        },
+        infoscreenImage = "grassfloor.jpg",
+        flavorText = "You feel the soft and living grass beneath your feet",
+        drawDetails = function(self, x, y, tileSize)
+            -- Grass rendering - small tufts
+            local padding = 2
+            local innerX = x + padding
+            local innerY = y + padding
+            local innerSize = tileSize - (padding * 2)
+            
+            -- Base grass color
+            love.graphics.setColor(0.6, 0.8, 0.6, 1)
+            love.graphics.rectangle("fill", innerX, innerY, innerSize, innerSize)
+            
+            -- Draw grass tufts
+            love.graphics.setColor(0.5, 0.7, 0.5, 1)
+            love.graphics.setLineWidth(1)
+            
+            -- Create a pseudo-random pattern based on position
+            math.randomseed(self.gridX * 100 + self.gridY)
+            for i = 1, 15 do
+                local x1 = innerX + math.random(innerSize)
+                local y1 = innerY + math.random(innerSize)
+                local height = 2 + math.random(4)
+                
+                love.graphics.line(x1, y1, x1, y1 - height)
+            end
+            -- Reset random seed
+            math.randomseed(os.time())
         end
     },
     wall = {
@@ -185,14 +255,17 @@ local tileConfigs = {
             -- Water-specific rendering could be added here
         end
     },
+    -- Keeping the old grass type temporarily for backward compatibility
     grass = {
-        name = "Grass",
+        name = "Old Grass",
         color = {0.93, 0.93, 0.93, 1}, -- White (same as floor)
         borderColor = {0.5, 0.7, 0.5, 1}, -- Green border
         walkable = true,
         showLabel = false,
+        height = 0,
         drawDetails = function(self, x, y, tileSize)
-            -- Grass-specific rendering could be added here
+            -- Redirect to the new grassFloor type
+            tileConfigs.grassFloor.drawDetails(self, x, y, tileSize)
         end
     }
     -- Add more tile types easily here
@@ -216,8 +289,25 @@ function Tile:new(config)
     local self = Entity.new(self, config)
     
     -- Tile-specific properties
-    self.tileType = config.tileType or "floor"
+    self.tileType = config.tileType or "stoneFloor" -- Default to stoneFloor instead of generic floor
     self.drawDetails = config.drawDetails
+    
+    -- Add height property (0 for floor tiles)
+    self.height = config.height or 0
+    
+    -- Add step sound property
+    self.stepSound = config.stepSound
+    
+    -- Add events
+    self.events = config.events or {}
+    
+    -- Add infoscreen image
+    self.infoscreenImage = config.infoscreenImage
+    
+    -- Add flavor text if not already set
+    if not self.flavorText and config.flavorText then
+        self.flavorText = config.flavorText
+    end
     
     -- Copy any extra properties from config
     if config.isWindow ~= nil then
@@ -253,8 +343,8 @@ end
 
 -- Factory method to create different types of tiles
 function Tile.createTile(tileType, grid, gridX, gridY, extraProperties)
-    -- Get the configuration for this tile type, or default to floor if not found
-    local config = tileConfigs[tileType] or tileConfigs["floor"]
+    -- Get the configuration for this tile type, or default to stoneFloor if not found
+    local config = tileConfigs[tileType] or tileConfigs["stoneFloor"]
     
     local tileConfig = {
         grid = grid,
@@ -267,7 +357,12 @@ function Tile.createTile(tileType, grid, gridX, gridY, extraProperties)
         borderWidth = config.borderWidth,
         walkable = config.walkable,
         showLabel = config.showLabel,
-        drawDetails = config.drawDetails
+        drawDetails = config.drawDetails,
+        height = config.height,
+        stepSound = config.stepSound,
+        events = config.events,
+        infoscreenImage = config.infoscreenImage,
+        flavorText = config.flavorText
     }
     
     -- Add any extra properties (like isWindow)

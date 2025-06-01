@@ -27,7 +27,7 @@ function EditorMode:launchEditor()
     
     if self.separateWindow then
         -- Create a separate window for the editor
-        local width, height = 1024, 768  -- Default editor window size
+        local width, height = 1366, 768  -- Updated editor window size
         love.window.setMode(width, height, {
             fullscreen = false,
             resizable = true,
