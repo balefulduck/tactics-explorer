@@ -103,6 +103,13 @@ function MapSightExtension.extend(map)
         end
     end
     
+    -- Add method to initialize heights based on tile types
+    if not map.initializeHeightsFromTiles then
+        map.initializeHeightsFromTiles = function(self)
+            MapSightExtension.initializeHeightsFromTiles(self)
+        end
+    end
+    
     -- Initialize heights based on existing tile types
     map:initializeHeightsFromTiles()
     

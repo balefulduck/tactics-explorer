@@ -13,7 +13,8 @@ local tileConfigs = {
     stoneFloor = {
         name = "Stone Floor",
         color = {0.85, 0.85, 0.85, 1}, -- Light gray
-        borderColor = {0.7, 0.7, 0.7, 1}, -- Darker gray border
+        borderColor = {0, 0, 0, 0}, -- Transparent border (no border)
+        borderWidth = 0,
         walkable = true,
         showLabel = false,
         height = 0,
@@ -24,12 +25,19 @@ local tileConfigs = {
         infoscreenImage = "assets/images/stonefloor.jpg",
         flavorText = "How long will these stones remain?",
         drawDetails = function(self, x, y, tileSize)
+            -- Add a subtle gap between tiles (2 pixels)
+            local gap = 2
+            
             -- Stone floor rendering - subtle texture
             love.graphics.setColor(0.8, 0.8, 0.8, 1)
             local padding = 2
-            local innerX = x + padding
-            local innerY = y + padding
-            local innerSize = tileSize - (padding * 2)
+            local innerX = x + gap/2 + padding
+            local innerY = y + gap/2 + padding
+            local innerSize = tileSize - gap - (padding * 2)
+            
+            -- Draw base floor
+            love.graphics.setColor(0.82, 0.82, 0.82, 1)
+            love.graphics.rectangle("fill", x + gap/2, y + gap/2, tileSize - gap, tileSize - gap)
             
             -- Draw a subtle stone pattern
             for i = 0, 2 do
@@ -92,157 +100,55 @@ local tileConfigs = {
     wall = {
         name = "Wall",
         color = {0.93, 0.93, 0.93, 1}, -- White (same as floor)
-        borderColor = {0, 0, 0, 1}, -- Black border
-        borderWidth = 2,
+        borderColor = {0, 0, 0, 0}, -- Transparent border (no border)
+        borderWidth = 0,
         walkable = false, -- Walls are never walkable
         showLabel = false,
-        -- Static shared border points to avoid flickering
-        -- These will be created once and shared across all wall tiles
-        sharedBorderPoints = nil,
+        height = 2, -- Wall has height 2 for sight system
+        
+        -- We'll load the image in the drawDetails function to handle errors better
         drawDetails = function(self, x, y, tileSize)
-            -- Draw a slightly irregular, hand-drawn looking border with 1px padding
-            love.graphics.setColor(0, 0, 0, 1) -- Black
-            love.graphics.setLineWidth(2)
-            
-            -- Create padding of 1px from the edge
-            local padding = 1
-            local innerX = x + padding
-            local innerY = y + padding
-            local innerSize = tileSize - (padding * 2)
-            
-            -- Initialize border points if needed
-            if not self.borderPoints then
-                -- Create shared border points if they don't exist yet
-                if not Tile.wallBorderPoints then
-                    local segments = 4 -- Number of segments for each side
-                    local segmentWidth = innerSize / segments
-                    local jitter = 0.5 -- Small amount of irregularity
-                    local points = {
-                        top = {},
-                        right = {},
-                        bottom = {},
-                        left = {}
-                    }
-                    
-                    -- Generate points for all four sides
-                    for i = 0, segments do
-                        -- Generate random offsets
-                        points.top[i] = math.random() * jitter
-                        points.right[i] = math.random() * jitter
-                        points.bottom[i] = math.random() * jitter
-                        points.left[i] = math.random() * jitter
-                    end
-                    
-                    -- Store in the Tile class for sharing
-                    Tile.wallBorderPoints = points
+            -- Load the image if not already loaded
+            if not self.wallImage then
+                -- Use pcall to catch any errors during image loading
+                local success, result = pcall(function()
+                    return love.graphics.newImage("assets/images/wall.png")
+                end)
+                
+                if success then
+                    self.wallImage = result
+                    print("Wall image loaded successfully. Dimensions: " .. self.wallImage:getWidth() .. "x" .. self.wallImage:getHeight())
+                else
+                    print("Failed to load wall image: " .. tostring(result))
+                    self.wallImage = false -- Mark as failed to avoid repeated attempts
                 end
-                
-                -- Use the shared points
-                self.borderPoints = Tile.wallBorderPoints
             end
             
-            local points = self.borderPoints
-            local segments = 4
-            local segmentWidth = innerSize / segments
+            -- Add a subtle gap between tiles (2 pixels)
+            local gap = 2
             
-            -- Check if this wall tile is adjacent to the player
-            local isAdjacent = false
-            if self.grid and self.grid.game and self.grid.game.player then
-                local player = self.grid.game.player
-                local playerX, playerY = player.gridX, player.gridY
+            -- Draw the wall sprite if image loaded successfully
+            if self.wallImage and self.wallImage ~= false then
+                love.graphics.setColor(1, 1, 1, 1) -- Reset color to white for proper image rendering
                 
-                -- Check if player is adjacent (including diagonals)
-                isAdjacent = math.abs(self.gridX - playerX) <= 1 and math.abs(self.gridY - playerY) <= 1
-            end
-            
-            -- Draw base wall fill
-            if not self.isWindow then
-                love.graphics.setColor(0.93, 0.93, 0.93, 1) -- Wall color
-                love.graphics.rectangle("fill", innerX, innerY, innerSize, innerSize)
+                -- Get actual image dimensions
+                local imgWidth = self.wallImage:getWidth()
+                local imgHeight = self.wallImage:getHeight()
+                
+                -- Calculate scale to fit the tile size minus the gap
+                local scaleX = (tileSize - gap) / imgWidth
+                local scaleY = (tileSize - gap) / imgHeight
+                
+                -- Draw the image with a small gap
+                love.graphics.draw(self.wallImage, x + gap/2, y + gap/2, 0, scaleX, scaleY)
             else
-                -- For windows, use a light blue background
-                love.graphics.setColor(0.9, 0.95, 1, 0.7) -- Light blue for window background
-                love.graphics.rectangle("fill", innerX, innerY, innerSize, innerSize)
+                -- Fallback rendering if image failed to load
+                love.graphics.setColor(0.6, 0.6, 0.6, 1) -- Dark gray
+                love.graphics.rectangle("fill", x + gap/2, y + gap/2, tileSize - gap, tileSize - gap)
                 
-                -- If adjacent to player, add a highlight
-                if isAdjacent then
-                    love.graphics.setColor(0.9, 0.9, 0.5, 0.3) -- Subtle yellow highlight
-                    love.graphics.rectangle("fill", innerX, innerY, innerSize, innerSize)
-                end
-            end
-            
-            -- Draw the border using pre-calculated irregularities
-            love.graphics.setColor(0, 0, 0, 1) -- Black
-            for i = 0, segments - 1 do
-                -- Top border
-                love.graphics.line(
-                    innerX + (i * segmentWidth), innerY + points.top[i],
-                    innerX + ((i + 1) * segmentWidth), innerY + points.top[i + 1]
-                )
-                
-                -- Right border
-                love.graphics.line(
-                    innerX + innerSize + points.right[i], innerY + (i * segmentWidth),
-                    innerX + innerSize + points.right[i + 1], innerY + ((i + 1) * segmentWidth)
-                )
-                
-                -- Bottom border
-                love.graphics.line(
-                    innerX + innerSize - (i * segmentWidth), innerY + innerSize + points.bottom[i],
-                    innerX + innerSize - ((i + 1) * segmentWidth), innerY + innerSize + points.bottom[i + 1]
-                )
-                
-                -- Left border
-                love.graphics.line(
-                    innerX + points.left[i], innerY + innerSize - (i * segmentWidth),
-                    innerX + points.left[i + 1], innerY + innerSize - ((i + 1) * segmentWidth)
-                )
-            end
-            
-            -- If this is a window, draw 4 squares in the center
-            if self.isWindow then
-                -- Draw the window frame
-                love.graphics.setColor(0.6, 0.4, 0.2, 1) -- Brown frame color
-                love.graphics.setLineWidth(2) -- Make frame more visible
-                
-                -- Horizontal divider
-                love.graphics.line(
-                    innerX, innerY + innerSize/2,
-                    innerX + innerSize, innerY + innerSize/2
-                )
-                
-                -- Vertical divider
-                love.graphics.line(
-                    innerX + innerSize/2, innerY,
-                    innerX + innerSize/2, innerY + innerSize
-                )
-                
-                -- Draw glass panes with blue tint
-                love.graphics.setColor(0.7, 0.8, 1, 0.6) -- More visible blue for glass
-                
-                -- Top-left pane
-                love.graphics.rectangle("fill", 
-                    innerX + 2, innerY + 2, 
-                    innerSize/2 - 3, innerSize/2 - 3
-                )
-                
-                -- Top-right pane
-                love.graphics.rectangle("fill", 
-                    innerX + innerSize/2 + 1, innerY + 2, 
-                    innerSize/2 - 3, innerSize/2 - 3
-                )
-                
-                -- Bottom-left pane
-                love.graphics.rectangle("fill", 
-                    innerX + 2, innerY + innerSize/2 + 1, 
-                    innerSize/2 - 3, innerSize/2 - 3
-                )
-                
-                -- Bottom-right pane
-                love.graphics.rectangle("fill", 
-                    innerX + innerSize/2 + 1, innerY + innerSize/2 + 1, 
-                    innerSize/2 - 3, innerSize/2 - 3
-                )
+                -- Add a simple wall pattern
+                love.graphics.setColor(0.4, 0.4, 0.4, 1) -- Darker gray for pattern
+                love.graphics.rectangle("fill", x + gap/2 + 2, y + gap/2 + 2, tileSize - gap - 4, tileSize - gap - 4)
             end
         end
     },
