@@ -1,112 +1,130 @@
 -- Player entity
-local Player = {}
+-- Represents the player character in the game
+
+local Entity = require("src.core.entity")
+
+local Player = setmetatable({}, {__index = Entity})
 Player.__index = Player
 
-function Player:new(map, gridX, gridY)
-    local self = setmetatable({}, Player)
+function Player:new(grid, gridX, gridY)
+    local config = {
+        grid = grid,
+        gridX = gridX or 1,
+        gridY = gridY or 1,
+        type = "player",
+        name = "Player",
+        width = 1,
+        height = 1,
+        color = {0.93, 0.93, 0.93, 1}, -- White background
+        borderColor = {0.2, 0.2, 0.8, 1}, -- Blue border
+        borderWidth = 2,
+        showLabel = false,
+        walkable = false,
+        interactable = false
+    }
     
-    -- Handle both map and grid objects
-    if map.grid then
-        -- If a map is passed, get the grid from it
-        self.grid = map.grid
-        self.map = map
-    else
-        -- If a grid is passed directly
-        self.grid = map
+    -- If a map was passed instead of a grid, extract the grid from it
+    if grid.grid then
+        config.grid = grid.grid
     end
     
-    self.gridX = gridX or 1
-    self.gridY = gridY or 1
-    self.gridWidth = 1  -- Width in grid cells
-    self.gridHeight = 1 -- Height in grid cells
+    local self = Entity.new(self, config)
     
-    -- Calculate world position based on grid position
-    self.x, self.y = self.grid:gridToWorld(self.gridX, self.gridY)
-    
-    -- Player attributes
-    self.moveSpeed = 4  -- Grid cells per second
-    self.color = {0.2, 0.2, 0.2, 1}  -- Dark gray (monochrome)
-    self.size = (self.grid.tileSize - 4) * 0.8  -- Slightly smaller than a tile, accounting for padding
-    
-    -- Movement state
+    -- Player-specific properties
+    self.moveSpeed = 0.05 -- Reduced from 0.2 to make movement more responsive
+    self.moveTimer = 0
     self.isMoving = false
-    self.targetX = self.x
-    self.targetY = self.y
+    self.targetX = self.gridX
+    self.targetY = self.gridY
+    self.canMove = true -- Flag to control movement input
     
     return self
 end
 
 function Player:update(dt)
-    -- Handle smooth movement between grid cells
+    -- Handle movement animation
     if self.isMoving then
-        local dx = self.targetX - self.x
-        local dy = self.targetY - self.y
-        local distance = math.sqrt(dx * dx + dy * dy)
+        self.moveTimer = self.moveTimer + dt
         
-        if distance < 1 then
-            -- We've reached the target position
-            self.x = self.targetX
-            self.y = self.targetY
+        if self.moveTimer >= self.moveSpeed then
+            -- Movement complete
+            self.gridX = self.targetX
+            self.gridY = self.targetY  -- Fixed typo: was self.targetY = self.targetY
+            self.x, self.y = self.grid:gridToWorld(self.gridX, self.gridY)
             self.isMoving = false
-        else
-            -- Move towards the target position
-            local moveAmount = self.moveSpeed * self.grid.tileSize * dt
-            local angle = math.atan2(dy, dx)
-            
-            self.x = self.x + math.cos(angle) * moveAmount
-            self.y = self.y + math.sin(angle) * moveAmount
+            self.moveTimer = 0
+            self.canMove = true  -- Allow movement again
         end
     end
 end
 
 function Player:move(dx, dy)
-    if self.isMoving then return false end
-    
-    local newGridX = self.gridX + dx
-    local newGridY = self.gridY + dy
-    
-    -- Check if the new position is valid and walkable
-    -- First check if it's within map boundaries
-    if self.map and (newGridX < 1 or newGridX > self.map.width or newGridY < 1 or newGridY > self.map.height) then
+    -- Check if movement is allowed
+    if not self.canMove then
         return false
     end
     
-    -- Then check if it's walkable using the grid
-    if self.grid:isWalkable(newGridX, newGridY) then
-        -- Update grid position
-        self.gridX = newGridX
-        self.gridY = newGridY
-        
-        -- Calculate new world position target
-        self.targetX, self.targetY = self.grid:gridToWorld(self.gridX, self.gridY)
-        self.isMoving = true
-        
-        return true
+    -- Calculate target position
+    local targetX = self.gridX + dx
+    local targetY = self.gridY + dy
+    
+    -- Check if the move is valid
+    if not self.grid:isWalkable(targetX, targetY) then
+        return false
     end
     
-    return false
+    -- Set target position
+    self.targetX = targetX
+    self.targetY = targetY
+    self.isMoving = true
+    self.moveTimer = 0
+    self.canMove = false  -- Prevent movement until animation completes
+    
+    -- Update position immediately
+    self.gridX = targetX
+    self.gridY = targetY
+    self.x, self.y = self.grid:gridToWorld(self.gridX, self.gridY)
+    
+    return true
 end
 
 function Player:draw()
-    -- Calculate center position with padding adjustment
-    local padding = 2
-    local tileSize = self.grid.tileSize - (padding * 2)
-    local centerX = self.x + padding + tileSize / 2
-    local centerY = self.y + padding + tileSize / 2
-    local radius = self.size / 2
+    -- Call parent draw method
+    Entity.draw(self)
     
-    -- Draw drop shadow
-    love.graphics.setColor(0, 0, 0, 0.3)  -- Semi-transparent black
-    love.graphics.circle("fill", centerX + 2, centerY + 2, radius)
+    -- Add player-specific visual elements
+    local tileSize = self.grid.tileSize
     
-    -- Draw the player
-    love.graphics.setColor(self.color)
-    love.graphics.circle("fill", centerX, centerY, radius)
+    -- Calculate center position
+    local centerX = self.x + tileSize / 2
+    local centerY = self.y + tileSize / 2
     
-    -- Draw outline
-    love.graphics.setColor(0, 0, 0, 1)  -- Black
-    love.graphics.setLineWidth(1.5)
-    love.graphics.circle("line", centerX, centerY, radius)
+    -- Load the character PNG image if not already loaded
+    if not self.characterImage then
+        self.characterImage = love.graphics.newImage("assets/images/character.png")
+        
+        -- Calculate scale to fit within the tile
+        local maxSize = tileSize * 0.8 -- Leave some margin
+        self.characterScale = math.min(
+            maxSize / self.characterImage:getWidth(),
+            maxSize / self.characterImage:getHeight()
+        )
+    end
+    
+    -- Draw the character image
+    love.graphics.setColor(1, 1, 1, 1) -- White (no tint)
+    
+    -- Draw the image centered on the tile
+    love.graphics.draw(
+        self.characterImage,
+        centerX,
+        centerY,
+        0, -- rotation (none)
+        self.characterScale,
+        self.characterScale,
+        self.characterImage:getWidth() / 2, -- origin X (center of image)
+        self.characterImage:getHeight() / 2  -- origin Y (center of image)
+    )
     
     -- Reset color and line width
     love.graphics.setColor(1, 1, 1, 1)

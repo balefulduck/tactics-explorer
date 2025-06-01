@@ -2,6 +2,7 @@
 -- Uses the new entity-based system for consistency
 
 local Entity = require("src.core.entity")
+local Examinable = require("src.interfaces.examinable")
 
 local Tile = setmetatable({}, {__index = Entity})
 Tile.__index = Tile
@@ -388,6 +389,33 @@ function Tile:draw()
     -- Reset colors and line width
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.setLineWidth(1)
+end
+
+-- Override the getExaminationInfo method to provide tile-specific information
+function Tile:getExaminationInfo()
+    -- Start with the base entity information
+    local info = Entity.getExaminationInfo(self)
+    
+    -- Add tile-specific information
+    info.tileType = self.tileType
+    info.height = self.height
+    
+    -- Add walkability information
+    info.walkable = self.walkable
+    
+    -- Add special properties for specific tile types
+    if self.isWindow then
+        info.description = "A glass window that allows you to see outside."
+        info.flavorText = self.flavorText or "Light streams through the glass panes."
+    elseif self.tileType == "wall" then
+        info.description = "A solid wall that blocks movement."
+        info.flavorText = self.flavorText or "The wall appears sturdy and well-built."
+    elseif self.tileType == "water" then
+        info.description = "A body of water that cannot be traversed."
+        info.flavorText = self.flavorText or "The water ripples gently."
+    end
+    
+    return info
 end
 
 return Tile

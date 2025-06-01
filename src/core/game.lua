@@ -3,7 +3,7 @@
 
 local Grid = require("src.core.grid")
 local Map = require("src.core.map")
-local Player = require("src.core.player")
+local Player = require("src.entities.player")
 local Furniture = require("src.core.furniture")
 local Camera = require("src.systems.camera")
 local UI = require("src.systems.ui")
@@ -758,14 +758,17 @@ function Game:showEntityInfoAtCursor()
     local x = self.examinationCursor.gridX
     local y = self.examinationCursor.gridY
     
-    -- Get entities at cursor position
-    local entities = self.currentMap:getEntitiesAt(x, y)
+    -- Use the new unified examination system to get the most relevant object
+    local examinable = self.currentMap:getExaminableAt(x, y)
     
-    -- If there are entities, show the first one's info
-    if #entities > 0 and entities[1].name then
-        self:showEntityInfoDirect(entities[1])
+    if examinable then
+        -- Get standardized examination info from the object
+        local info = examinable:getExaminationInfo()
+        
+        -- Show the entity info using the existing method
+        self:showEntityInfoDirect(examinable)
     else
-        -- If no entities, show floor tile info
+        -- If nothing examinable found, show generic floor info
         self:showFloorTileInfo(x, y)
     end
 end

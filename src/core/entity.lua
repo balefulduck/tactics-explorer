@@ -1,6 +1,8 @@
 -- Base Entity class
 -- This serves as the foundation for all game objects
 
+local Examinable = require("src.interfaces.examinable")
+
 local Entity = {}
 Entity.__index = Entity
 
@@ -88,10 +90,14 @@ function Entity:draw()
 end
 
 function Entity:containsPosition(gridX, gridY)
+    -- Use gridWidth/gridHeight if available, otherwise fall back to width/height
+    local entityWidth = self.gridWidth or self.width or 1
+    local entityHeight = self.gridHeight or self.height or 1
+    
     return gridX >= self.gridX and 
-           gridX < self.gridX + self.width and
+           gridX < self.gridX + entityWidth and
            gridY >= self.gridY and
-           gridY < self.gridY + self.height
+           gridY < self.gridY + entityHeight
 end
 
 function Entity:interact()
@@ -114,6 +120,36 @@ end
 function Entity:setProperty(propertyName, value)
     self.properties[propertyName] = value
     return true
+end
+
+-- Implementation of the Examinable interface
+-- Returns standardized examination information about this entity
+function Entity:getExaminationInfo()
+    local info = {
+        name = self.name or "Unknown Entity",
+        description = self.description or "",
+        properties = {},
+        image = self.image,
+        flavorText = self.flavorText or "You see nothing special about this."
+    }
+    
+    -- Add relevant properties for display
+    for key, value in pairs(self.properties) do
+        -- Skip complex tables and functions
+        if type(value) ~= "table" and type(value) ~= "function" then
+            info.properties[key] = value
+        end
+    end
+    
+    -- Add type information
+    info.type = self.type
+    
+    -- Add size information if relevant
+    if self.width > 1 or self.height > 1 then
+        info.dimensions = self.width .. "x" .. self.height
+    end
+    
+    return info
 end
 
 return Entity

@@ -116,6 +116,34 @@ function Map:getEntitiesAt(gridX, gridY)
     return entitiesAtPosition
 end
 
+-- Get the most relevant examinable object at a grid position
+-- This provides a hierarchical approach to finding objects for examination mode
+function Map:getExaminableAt(gridX, gridY)
+    -- First, check for entities at this position (furniture, player, etc.)
+    local entities = {}
+    for _, entity in ipairs(self.entities) do
+        if entity.containsPosition and entity:containsPosition(gridX, gridY) then
+            table.insert(entities, entity)
+        end
+    end
+    
+    -- If we found entities, return the most relevant one
+    if #entities > 0 then
+        return entities[1]  -- Could implement priority logic here if needed
+    end
+    
+    -- If no entities, check for special tiles
+    if gridX >= 1 and gridX <= self.width and gridY >= 1 and gridY <= self.height then
+        local tile = self.tiles[gridY][gridX]
+        if tile then
+            return tile  -- All tiles should be examinable
+        end
+    end
+    
+    -- Nothing found
+    return nil
+end
+
 -- Get a single entity at the specified grid position
 function Map:getEntityAt(gridX, gridY)
     local entities = self:getEntitiesAt(gridX, gridY)
