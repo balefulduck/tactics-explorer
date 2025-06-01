@@ -4,6 +4,7 @@ local Map = require("src.core.map")
 local Player = require("src.entities.player")
 local MapSightExtension = require("src.systems.sight.mapSightExtension")
 local EntitySightExtension = require("src.systems.sight.entitySightExtension")
+local SightManager = require("src.systems.sight.sightManager")
 
 local TestMap = {}
 
@@ -20,154 +21,137 @@ function TestMap.create(game)
     
     -- Add a wall at position B3 (2,3)
     map:setTile(2, 3, "wall")
+    print("⭐ Added wall at position (2,3)")
+    
+    -- Verify wall was added correctly
+    local wallTile = map:getTile(2, 3)
+    if wallTile and wallTile.tileType == "wall" then
+        print("✅ Wall tile confirmed at (2,3)")
+    else
+        print("❌ ERROR: Wall tile not set correctly at (2,3)")
+    end
     
     -- Create a custom player entity with fixed movement handling
     local player = Player:new(map, 1, 1)
     
-    -- Override the player's move method to properly update tile walkability
-    local originalMove = player.move
-    player.move = function(self, dx, dy)
-        -- Store the old position
-        local oldX, oldY = self.gridX, self.gridY
-        
-        -- Call the original move method
-        local result = originalMove(self, dx, dy)
-        
-        -- If movement was successful, update tile walkability
-        if result and self.isMoving then
-            -- Reset the old tile to walkable
-            local oldTile = map:getTile(oldX, oldY)
-            if oldTile then
-                oldTile.walkable = true
-            end
-            
-            -- Mark the new tile as not walkable during movement
-            local newTile = map:getTile(self.targetX, self.targetY)
-            if newTile then
-                newTile.walkable = false
-            end
-        end
-        
-        return result
-    end
-    
-    -- Override the update method to fix tile walkability after movement completes
-    local originalUpdate = player.update
-    player.update = function(self, dt)
-        local wasMoving = self.isMoving
-        
-        -- Call the original update method
-        originalUpdate(self, dt)
-        
-        -- If movement just completed, ensure current tile is properly marked
-        if wasMoving and not self.isMoving then
-            -- Reset walkability based on actual entity positions
-            for y = 1, map.height do
-                for x = 1, map.width do
-                    local tile = map:getTile(x, y)
-                    if tile and tile.tileType ~= "wall" then
-                        tile.walkable = true
-                    end
-                end
-            end
-            
-            -- Mark tiles occupied by entities as not walkable
-            for _, entity in ipairs(map.entities) do
-                if not entity.walkable and entity.containsPosition then
-                    local entityWidth = entity.gridWidth or entity.width or 1
-                    local entityHeight = entity.gridHeight or entity.height or 1
-                    
-                    for y = entity.gridY, entity.gridY + entityHeight - 1 do
-                        for x = entity.gridX, entity.gridX + entityWidth - 1 do
-                            local tile = map:getTile(x, y)
-                            if tile then
-                                tile.walkable = false
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
     map:addEntity(player)
     game.player = player
+    print("⭐ Added player at (1,1)")
     
-    -- Add an NPC at position C3 (3,3) - using a modified player entity that's uncontrollable
+    -- Add an NPC at position C3 (3,3)
     local npc = Player:new(map, 3, 3)
     npc.isPlayerControlled = false
     npc.name = "NPC"
     npc.color = {0.8, 0.2, 0.2, 1} -- Red color
     npc.borderColor = {0.6, 0.1, 0.1, 1}
     map:addEntity(npc)
+    print("⭐ Added NPC at (3,3)")
     
-    -- Apply sight extensions to map and entities
+    -- Apply sight extensions to map
+    print("⭐ Extending map with sight capabilities")
     MapSightExtension.extend(map)
     
     -- Set wall height to 2 (fully blocks sight)
-    for y = 1, map.height do
-        for x = 1, map.width do
-            local tile = map:getTile(x, y)
-            if tile and tile.tileType == "wall" then
-                map:setTileHeight(x, y, 2) -- Height 2 fully blocks sight
-                map:setTileObstruction(x, y, 1.0) -- Walls fully obstruct
-            end
-        end
-    end
+    map:setTileHeight(2, 3, 2) -- Height 2 fully blocks sight
+    map:setTileObstruction(2, 3, 1.0) -- Walls fully obstruct
+    print("⭐ Set wall height to 2 and obstruction to 1.0")
     
     -- Add sight capability to player
     EntitySightExtension.extend(player)
     player.hasSight = true
-    player.height = 1.0 -- Player height (standard 1-tile height)
-    player.perception = 1.0 -- Normal perception
+    player.height = 1.0
+    player.perception = 1.0
+    print("⭐ Extended player with sight capabilities")
     
     -- Add sight capability to NPC
     EntitySightExtension.extend(npc)
     npc.hasSight = true
-    npc.height = 1.0 -- NPC height (standard 1-tile height)
-    npc.perception = 1.0 -- Normal perception
+    npc.height = 1.0
+    npc.perception = 1.0
     
-    -- Create the sight system
-    local sightManager = MapSightExtension.createSightSystem(map)
+    -- Create and attach the sight manager
+    local sightManager = SightManager:new(map)
     sightManager.debug = true -- Enable debug output
+    map.sightManager = sightManager
+    print("⭐ Created and attached sight manager to map")
     
-    -- Update the map's update function
+    -- Override player's move function to update sight after movement
+    local originalMove = player.move
+    player.move = function(self, dx, dy)
+        local moved = originalMove(self, dx, dy)
+        if moved and map.sightManager then
+            print("⭐ Player moved, updating sight")
+            map.sightManager:updateAllSight()
+        end
+        return moved
+    end
+    
+    -- Override the map's update function
     local originalUpdate = map.update
     map.update = function(self, dt)
         if originalUpdate then
             originalUpdate(self, dt)
         end
         
-        -- Update all entities
-        for _, entity in ipairs(self.entities) do
-            if entity.update then
-                entity:update(dt)
-            end
-        end
-        
-        -- Update sight system
+        -- Update sight on every frame for testing
         if self.sightManager then
             self.sightManager:updateAllSight()
         end
     end
     
-    -- Override the map's draw function
+    -- Override the map's draw function to add ambient occlusion
     local originalDraw = map.draw
     map.draw = function(self)
+        -- Draw tiles and entities first
         if originalDraw then
             originalDraw(self)
         end
         
-        -- Draw sight debug overlays
+        -- Draw bright yellow test border
+        love.graphics.setColor(1, 1, 0, 1) -- Yellow
+        love.graphics.setLineWidth(4)
+        love.graphics.rectangle("line", 0, 0, self.width * self.grid.tileSize, self.height * self.grid.tileSize)
+        love.graphics.setLineWidth(1)
+        
+        -- Draw occlusion overlays if sight manager is attached
         if self.sightManager then
-            self.sightManager:drawDebug()
+            -- Draw ambient occlusion overlay
+            self.sightManager:drawAmbientOcclusion()
+            
+            -- Draw debug text
+            love.graphics.setColor(1, 0, 0, 1) -- Red
+            love.graphics.print("Ambient Occlusion Test Map", 10, 10)
+            love.graphics.print("Player: (" .. player.gridX .. "," .. player.gridY .. ")", 10, 30)
+            love.graphics.setColor(1, 1, 1, 1)
+        else
+            love.graphics.setColor(1, 0, 0, 1) -- Red
+            love.graphics.print("ERROR: No SightManager!", 10, 10)
+            love.graphics.setColor(1, 1, 1, 1)
         end
     end
     
-    -- Initial sight update
-    map:updateSight()
+    -- Initialize sight
+    sightManager:updateAllSight()
+    print("⭐ Initial sight update complete")
     
-    print("Test map loaded successfully with sight system")
+    -- Force some test occlusion values directly
+    print("⭐ Forcing test occlusion values for debugging")
+    
+    -- Initialize visibility map if it doesn't exist
+    if not sightManager.visibilityMap then
+        print("⭐ Creating visibility map")
+        sightManager.visibilityMap = {}
+    end
+    
+    -- Initialize the nested tables
+    if not sightManager.visibilityMap[2] then sightManager.visibilityMap[2] = {} end
+    if not sightManager.visibilityMap[3] then sightManager.visibilityMap[3] = {} end
+    
+    -- Set test occlusion values
+    sightManager.visibilityMap[2][4] = { ambientOcclusion = 3, visible = true, explored = true } -- Full occlusion
+    sightManager.visibilityMap[2][5] = { ambientOcclusion = 2, visible = true, explored = true } -- Medium occlusion
+    sightManager.visibilityMap[3][4] = { ambientOcclusion = 1, visible = true, explored = true } -- Light occlusion
+    
     return map
 end
 
