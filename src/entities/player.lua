@@ -31,12 +31,16 @@ function Player:new(grid, gridX, gridY)
     local self = Entity.new(self, config)
     
     -- Player-specific properties
-    self.moveSpeed = 0.05 -- Reduced from 0.2 to make movement more responsive
+    self.moveSpeed = 0.2 -- Time in seconds for movement animation
     self.moveTimer = 0
     self.isMoving = false
     self.targetX = self.gridX
     self.targetY = self.gridY
     self.canMove = true -- Flag to control movement input
+    
+    -- Visual position (for smooth movement)
+    self.visualX, self.visualY = self.x, self.y
+    self.movementProgress = 0 -- Progress of movement animation (0-1)
     
     return self
 end
@@ -45,17 +49,39 @@ function Player:update(dt)
     -- Handle movement animation
     if self.isMoving then
         self.moveTimer = self.moveTimer + dt
+        self.movementProgress = math.min(1, self.moveTimer / self.moveSpeed)
+        
+        -- Calculate visual position using interpolation
+        local startX, startY = self.grid:gridToWorld(self.gridX, self.gridY)
+        local endX, endY = self.grid:gridToWorld(self.targetGridX, self.targetGridY)
+        
+        -- Use easing function for smoother movement
+        local progress = self:easeInOutQuad(self.movementProgress)
+        self.visualX = startX + (endX - startX) * progress
+        self.visualY = startY + (endY - startY) * progress
         
         if self.moveTimer >= self.moveSpeed then
             -- Movement complete
-            self.gridX = self.targetX
-            self.gridY = self.targetY  -- Fixed typo: was self.targetY = self.targetY
+            self.gridX = self.targetGridX
+            self.gridY = self.targetGridY
             self.x, self.y = self.grid:gridToWorld(self.gridX, self.gridY)
+            self.visualX, self.visualY = self.x, self.y
             self.isMoving = false
             self.moveTimer = 0
+            self.movementProgress = 0
             self.canMove = true  -- Allow movement again
+            
+            -- Notify map that movement is complete (for sight updates)
+            if self.map and self.map.onEntityMovementComplete then
+                self.map:onEntityMovementComplete(self)
+            end
         end
     end
+    
+-- Easing function for smoother movement
+function Player:easeInOutQuad(t)
+    return t < 0.5 and 2 * t * t or -1 + (4 - 2 * t) * t
+end
 end
 
 function Player:move(dx, dy)
@@ -73,31 +99,53 @@ function Player:move(dx, dy)
         return false
     end
     
-    -- Set target position
-    self.targetX = targetX
-    self.targetY = targetY
+    -- Store logical grid position for game logic
+    local logicalX, logicalY = self.gridX, self.gridY
+    
+    -- Set target position for animation
+    self.targetGridX = targetX
+    self.targetGridY = targetY
     self.isMoving = true
     self.moveTimer = 0
+    self.movementProgress = 0
     self.canMove = false  -- Prevent movement until animation completes
     
-    -- Update position immediately
-    self.gridX = targetX
-    self.gridY = targetY
-    self.x, self.y = self.grid:gridToWorld(self.gridX, self.gridY)
+    -- Notify map that movement has started (for sight transition)
+    if self.map and self.map.onEntityMovementStart then
+        self.map:onEntityMovementStart(self, targetX, targetY)
+    end
     
+    -- Return true to indicate movement was initiated
     return true
 end
 
 function Player:draw()
-    -- Call parent draw method
-    Entity.draw(self)
+    -- Override parent draw method for smooth movement
+    -- We'll draw our own rectangle instead of using Entity.draw
+    
+    -- Use visual position for drawing during movement
+    local drawX, drawY = self.visualX, self.visualY
+    if not self.isMoving then
+        drawX, drawY = self.x, self.y
+    end
+    
+    -- Draw entity background
+    love.graphics.setColor(self.color)
+    love.graphics.rectangle("fill", drawX, drawY, self.width, self.height)
+    
+    -- Draw entity border
+    if self.borderWidth > 0 then
+        love.graphics.setColor(self.borderColor)
+        love.graphics.setLineWidth(self.borderWidth)
+        love.graphics.rectangle("line", drawX, drawY, self.width, self.height)
+    end
     
     -- Add player-specific visual elements
     local tileSize = self.grid.tileSize
     
-    -- Calculate center position
-    local centerX = self.x + tileSize / 2
-    local centerY = self.y + tileSize / 2
+    -- Calculate center position based on visual position
+    local centerX = drawX + tileSize / 2
+    local centerY = drawY + tileSize / 2
     
     -- Load the character PNG image if not already loaded
     if not self.characterImage then

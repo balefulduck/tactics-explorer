@@ -9,6 +9,7 @@ local Camera = require("src.systems.camera")
 local UI = require("src.systems.ui")
 local EditorMode = require("src.editor.editorMode")
 local PaperEffect = require("src.utils.paperEffect")
+local SightTweakIntegration = require("src.systems.sight.sightTweakIntegration")
 
 local Game = {}
 Game.__index = Game
@@ -95,6 +96,9 @@ function Game:load()
     
     -- Initialize editor mode
     self.editorMode = EditorMode:new(self)
+    
+    -- Initialize sight tweaking UI
+    SightTweakIntegration.init(self)
 end
 
 function Game:setupRoom()
@@ -141,6 +145,9 @@ function Game:update(dt)
         
         -- Update UI
         self.ui:update(dt)
+        
+        -- Update sight tweaking UI
+        SightTweakIntegration.update(dt)
     elseif self.state == "editor" then
         -- Update editor mode
         self.editorMode:update(dt)
@@ -175,6 +182,9 @@ function Game:draw()
         if self.debug then
             self:drawDebugInfo()
         end
+        
+        -- Draw sight tweaking UI
+        SightTweakIntegration.draw()
     elseif self.state == "editor" then
         -- Draw editor mode
         self.editorMode:draw()
@@ -590,6 +600,29 @@ function Game:calculateBoardScale()
 end
 
 function Game:keypressed(key)
+    -- Debug output for key presses
+    print("Game keypressed: " .. key)
+    
+    -- Check if sight tweaking UI handles the key press
+    if key == "f7" then
+        print("F7 key detected in Game:keypressed")
+        if SightTweakIntegration.ui then
+            print("SightTweakIntegration.ui exists, toggling visibility")
+            SightTweakIntegration.ui:toggle()
+            return
+        else
+            print("SightTweakIntegration.ui does not exist")
+            -- Try to reinitialize
+            print("Attempting to reinitialize SightTweakIntegration")
+            SightTweakIntegration.init(self)
+            if SightTweakIntegration.ui then
+                print("Reinitialization successful, toggling visibility")
+                SightTweakIntegration.ui:toggle()
+                return
+            end
+        end
+    end
+    
     -- Toggle editor mode with F2
     if key == "f2" then
         if self.state == "editor" then
@@ -956,6 +989,11 @@ function Game:drawExaminationCursor()
 end
 
 function Game:mousepressed(x, y, button)
+    -- Check if sight tweaking UI handles the mouse press
+    if SightTweakIntegration.mousepressed(x, y, button) then
+        return
+    end
+    
     if self.state == "playing" then
         -- Convert screen coordinates to world coordinates
         local worldX, worldY = self.camera:screenToWorld(x, y)
@@ -975,6 +1013,11 @@ function Game:mousepressed(x, y, button)
 end
 
 function Game:mousereleased(x, y, button)
+    -- Check if sight tweaking UI handles the mouse release
+    if SightTweakIntegration.mousereleased(x, y, button) then
+        return
+    end
+    
     if self.state == "editor" then
         -- Pass mouse events to the editor
         self.editorMode:mousereleased(x, y, button)
@@ -985,6 +1028,18 @@ function Game:wheelmoved(x, y)
     if self.state == "editor" then
         -- Pass wheel events to the editor for zooming
         self.editorMode:wheelmoved(x, y)
+    end
+end
+
+function Game:mousemoved(x, y, dx, dy)
+    -- Check if sight tweaking UI handles the mouse movement
+    if SightTweakIntegration.mousemoved(x, y, dx, dy) then
+        return
+    end
+    
+    if self.state == "editor" then
+        -- Pass mouse movement to editor if needed
+        -- self.editorMode:mousemoved(x, y, dx, dy)
     end
 end
 

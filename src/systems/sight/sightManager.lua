@@ -610,7 +610,7 @@ function SightManager:castShadow(obsX, obsY, wallX, wallY)
     local dirY = wallY - obsY
     
     -- Calculate the shadow projection point (extend beyond the wall)
-    local maxShadowLength = 10
+    local maxShadowLength = 5 -- Reduced shadow length for more precise control
     local shadowEndX = wallX + math.floor((dirX / distToWall) * maxShadowLength + 0.5)
     local shadowEndY = wallY + math.floor((dirY / distToWall) * maxShadowLength + 0.5)
     
@@ -633,40 +633,45 @@ function SightManager:castShadow(obsX, obsY, wallX, wallY)
             -- Calculate distance from wall (i-1 because we skip the first point)
             local distFromWall = i - 1
             
-            -- Calculate occlusion level (decreases with distance)
-            local level = maxLevel - math.floor((distFromWall - 1) / 2)
+            -- Simplified occlusion level calculation: decreases by 1 for each tile away
+            local level = maxLevel - (distFromWall - 1)
+            
+            -- Stop if we've reached zero occlusion
             if level <= 0 then break end
             
-            -- Set occlusion at the center point
+            -- Set occlusion at this point
             self:setOcclusion(x, y, level)
-            
-            -- Calculate shadow width at this distance (wider as it gets further)
-            local width = math.ceil(distFromWall / 2)
-            
-            -- Calculate perpendicular vector for shadow width
-            local perpX = -dirY / distToWall
-            local perpY = dirX / distToWall
-            
-            -- Add width to the shadow on both sides
-            for w = 1, width do
-                -- Calculate positions on either side of the center
-                local leftX = x + math.floor(perpX * w + 0.5)
-                local leftY = y + math.floor(perpY * w + 0.5)
+        end
+    end
+    
+    -- For each wall, also check diagonal sight lines to allow peeking around corners
+    -- These are the 8 possible directions to check from the wall
+    local directions = {
+        {1, 0}, {1, 1}, {0, 1}, {-1, 1}, 
+        {-1, 0}, {-1, -1}, {0, -1}, {1, -1}
+    }
+    
+    -- Direction from observer to wall
+    local mainDirX = math.sign(dirX)
+    local mainDirY = math.sign(dirY)
+    
+    for _, dir in ipairs(directions) do
+        -- Skip the direction that points back toward the observer
+        if not (dir[1] == -mainDirX and dir[2] == -mainDirY) then
+            -- Check up to 3 tiles in this direction
+            for dist = 1, 3 do
+                local checkX = wallX + dir[1] * dist
+                local checkY = wallY + dir[2] * dist
                 
-                local rightX = x - math.floor(perpX * w + 0.5)
-                local rightY = y - math.floor(perpY * w + 0.5)
-                
-                -- Reduce occlusion level for side points
-                local sideLevel = level - math.floor(w/2)
-                if sideLevel <= 0 then break end
-                
-                -- Set occlusion for side points if within bounds
-                if leftX >= 1 and leftX <= mapWidth and leftY >= 1 and leftY <= mapHeight then
-                    self:setOcclusion(leftX, leftY, sideLevel)
-                end
-                
-                if rightX >= 1 and rightX <= mapWidth and rightY >= 1 and rightY <= mapHeight then
-                    self:setOcclusion(rightX, rightY, sideLevel)
+                -- Ensure we're within map bounds
+                if checkX >= 1 and checkX <= mapWidth and checkY >= 1 and checkY <= mapHeight then
+                    -- Calculate occlusion level based on distance
+                    local level = maxLevel - dist
+                    
+                    -- Only set occlusion if level is positive
+                    if level > 0 then
+                        self:setOcclusion(checkX, checkY, level)
+                    end
                 end
             end
         end
@@ -696,6 +701,62 @@ end
 function SightManager:applyAmbientOcclusion(obsX, obsY, x, y)
     -- This is now handled by applyAllAmbientOcclusion
     return
+end
+
+-- Draw ambient occlusion overlay
+function SightManager:drawAmbientOcclusion(forceDebug)
+    if not self.map or not self.map.grid then
+        print("⚠️ Cannot draw ambient occlusion: no map or grid")
+        return
+    end
+    
+    -- Set default colors if they haven't been set
+    if not self.constants.AMBIENT_OCCLUSION_COLORS then
+        self.constants.AMBIENT_OCCLUSION_COLORS = {
+            {0, 0, 0, 0.2},  -- Level 1: Light occlusion
+            {0, 0, 0, 0.5},  -- Level 2: Medium occlusion
+            {0, 0, 0, 0.7}   -- Level 3: Heavy occlusion
+        }
+    end
+    
+    -- Draw ambient occlusion overlays
+    for x = 1, self.map.width do
+        for y = 1, self.map.height do
+            -- Get occlusion level from visibility map, defaulting to 0 if not found
+            local occlusionLevel = 0
+            
+            -- Check if this position has occlusion data
+            if self.visibilityMap[x] and self.visibilityMap[x][y] and self.visibilityMap[x][y].ambientOcclusion then
+                occlusionLevel = self.visibilityMap[x][y].ambientOcclusion
+            end
+            
+            -- Convert to world coordinates
+            local worldX, worldY = self.map.grid:gridToWorld(x, y)
+            local tileSize = self.map.grid.tileSize
+            
+            -- Use a small padding for visual cleanliness
+            local padding = 1
+            
+            -- Always draw in debug mode, otherwise only for levels > 0
+            if occlusionLevel > 0 or forceDebug then
+                -- Select color based on occlusion level
+                local color = {0, 0, 0, 0.1} -- Default minimal occlusion
+                if occlusionLevel > 0 and occlusionLevel <= #self.constants.AMBIENT_OCCLUSION_COLORS then
+                    color = self.constants.AMBIENT_OCCLUSION_COLORS[occlusionLevel]
+                end
+                
+                -- Draw the overlay
+                love.graphics.setColor(unpack(color))
+                love.graphics.rectangle("fill", worldX + padding, worldY + padding, tileSize - padding * 2, tileSize - padding * 2)
+                
+                -- In debug mode, display the occlusion level as text
+                if forceDebug then
+                    love.graphics.setColor(1, 1, 1, 1)
+                    love.graphics.print(occlusionLevel, worldX + tileSize / 2 - 5, worldY + tileSize / 2 - 8)
+                end
+            end
+        end
+    end
 end
 
 -- Get ambient occlusion level for a specific tile
@@ -866,8 +927,8 @@ function SightManager:drawAmbientOcclusion()
         self.hasCheckedOcclusion = true
     end
     
-    
-    -- Draw ambient occlusion overlays
+    -- Draw ambient occlusion directly here instead of calling the method again
+    -- (This prevents the recursive call that was causing stack overflow)
     for x = 1, self.map.width do
         for y = 1, self.map.height do
             -- Get occlusion level from visibility map, defaulting to 0 if not found
@@ -876,7 +937,6 @@ function SightManager:drawAmbientOcclusion()
             -- Check if this position has occlusion data
             if self.visibilityMap[x] and self.visibilityMap[x][y] and self.visibilityMap[x][y].ambientOcclusion then
                 occlusionLevel = self.visibilityMap[x][y].ambientOcclusion
-                print("Drawing occlusion level " .. occlusionLevel .. " at (" .. x .. "," .. y .. ")")
             end
             
             -- Convert to world coordinates

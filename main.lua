@@ -70,15 +70,20 @@ function love.draw()
 end
 
 function love.keypressed(key)
+    -- Debug output for key presses
+    print("Main keypressed: " .. key)
+    
     -- Handle intro screen key presses first
     if introScreen and introScreen:isActive() then
         if introScreen:keypressed(key) then
+            print("Key handled by intro screen: " .. key)
             return -- Key was handled by intro screen
         end
     end
     
     -- Handle settings menu key presses
     if settingsMenu:keypressed(key) then
+        print("Key handled by settings menu: " .. key)
         return -- Key was handled by settings menu
     end
     
@@ -111,4 +116,9 @@ end
 function love.wheelmoved(x, y)
     -- Handle mouse wheel events for zooming
     game:wheelmoved(x, y)
+end
+
+function love.mousemoved(x, y, dx, dy)
+    -- Handle mouse movement events
+    game:mousemoved(x, y, dx, dy)
 end
