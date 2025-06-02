@@ -191,12 +191,12 @@ function Game:initializeLayout()
     local screenHeight = love.graphics.getHeight()
     
     self.layout = {
-        -- Board section spans full height with no left padding and 85% of screen width
+        -- Keep only the board section (main game area) with the same dimensions
         board = {
-            x = 0,
-            y = 0,
-            width = screenWidth * 0.85,
-            height = screenHeight
+            x = 20,
+            y = 100,
+            width = screenWidth * 0.7 - 30,
+            height = screenHeight - 180
         }
     }
 end
@@ -516,7 +516,7 @@ end
 
 function Game:mousepressed(x, y, button)
     -- Check if sight tweaking UI handles the mouse press
-    if SightTweakIntegration.mousepressed(x, y, button) then
+    if SightTweakIntegration.handleMousePressed(x, y, button) then
         return
     end
     
@@ -545,7 +545,7 @@ end
 
 function Game:mousereleased(x, y, button)
     -- Check if sight tweaking UI handles the mouse release
-    if SightTweakIntegration.mousereleased(x, y, button) then
+    if SightTweakIntegration.handleMouseReleased(x, y, button) then
         return
     end
     
@@ -573,7 +573,7 @@ end
 
 function Game:mousemoved(x, y, dx, dy)
     -- Check if sight tweaking UI handles the mouse movement
-    if SightTweakIntegration.mousemoved(x, y, dx, dy) then
+    if SightTweakIntegration.handleMouseMoved(x, y, dx, dy) then
         return
     end
     
@@ -608,7 +608,7 @@ function Game:loadTestMap()
     local TestMap = require("src.maps.testMap")
     
     -- Create the test map
-    self.currentMap = TestMap.create(self)
+    self.currentMap = TestMap.create(self.grid)
     self.player = self.currentMap.player
     
     print("Test map loaded successfully")

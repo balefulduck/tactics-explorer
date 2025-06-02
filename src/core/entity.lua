@@ -60,14 +60,18 @@ function Entity:draw()
     local totalWidth = self.width * tileSize
     local totalHeight = self.height * tileSize
     
-    -- Draw entity background
-    love.graphics.setColor(self.color)
-    love.graphics.rectangle("fill", self.x, self.y, totalWidth, totalHeight)
+    -- Draw entity background only if it's not fully transparent
+    if self.color[4] > 0 then
+        love.graphics.setColor(self.color)
+        love.graphics.rectangle("fill", self.x, self.y, totalWidth, totalHeight)
+    end
     
-    -- Draw border
-    love.graphics.setColor(self.borderColor)
-    love.graphics.setLineWidth(self.borderWidth)
-    love.graphics.rectangle("line", self.x, self.y, totalWidth, totalHeight)
+    -- Draw border only if it's not fully transparent and has width
+    if self.borderColor[4] > 0 and self.borderWidth > 0 then
+        love.graphics.setColor(self.borderColor)
+        love.graphics.setLineWidth(self.borderWidth)
+        love.graphics.rectangle("line", self.x, self.y, totalWidth, totalHeight)
+    end
     
     -- Draw label if enabled
     if self.showLabel then

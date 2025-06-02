@@ -1,4 +1,4 @@
--- Simple Test Map with sight system and ambient occlusion
+-- New Test Map with specific layout
 
 local Map = require("src.core.map")
 local Player = require("src.entities.player")
@@ -10,71 +10,103 @@ local Timer = require("src.utils.timer") -- For smooth transitions
 local TestMap = {}
 
 function TestMap.create(game)
-    -- Create a new map with dimensions 5x5
-    local map = Map:new(game.grid, 5, 5)
+    -- Create a new map with dimensions 45x30
+    local map = Map:new(game.grid, 45, 30)
     
     -- Store the game reference in the map
     map.game = game
     
-    -- Fill the map with stone floor tiles
+    -- Fill the entire map with Ground tiles (black dot in middle)
     for x = 1, map.width do
         for y = 1, map.height do
-            map:setTile(x, y, "stoneFloor")
+            map:setTile(x, y, "ground")
         end
     end
     
-    -- Add walls for testing ambient occlusion
-    map:setTile(2, 3, "wall")
-    print("⭐ Added wall at position (2,3)")
+    -- 1. Bottom left structure (9x7 tiles) with wall perimeter
+    -- Calculate the position (bottom left corner of the map)
+    local structX = 1
+    local structY = map.height - 6 -- 7 tiles high, but zero-indexed
     
-    -- Add more walls to create an interesting occlusion pattern
-    map:setTile(3, 3, "wall")
-    print("⭐ Added wall at position (3,3)")
-    
-    map:setTile(4, 3, "wall")
-    print("⭐ Added wall at position (4,3)")
-    
-    -- Verify walls were added correctly
-    for x = 2, 4 do
-        local wallTile = map:getTile(x, 3)
-        if wallTile and wallTile.tileType == "wall" then
-            print("✅ Wall tile confirmed at (" .. x .. ",3)")
-        else
-            print("❌ ERROR: Wall tile not set correctly at (" .. x .. ",3)")
+    -- Create the structure perimeter with walls
+    for x = structX, structX + 8 do -- 9 tiles wide
+        for y = structY, structY + 6 do -- 7 tiles high
+            -- Only place walls on the perimeter
+            if x == structX or x == structX + 8 or y == structY or y == structY + 6 then
+                map:setTile(x, y, "wall")
+                
+                -- Get the wall tile to set rotation
+                local wallTile = map:getTile(x, y)
+                if wallTile then
+                    -- Set rotation based on position
+                    if y == structY then -- Top edge
+                        wallTile.rotation = math.pi/2 -- 90 degrees
+                    elseif x == structX + 8 then -- Right edge
+                        wallTile.rotation = math.pi -- 180 degrees
+                    elseif y == structY + 6 then -- Bottom edge
+                        wallTile.rotation = 3 * math.pi/2 -- 270 degrees
+                    elseif x == structX then -- Left edge
+                        wallTile.rotation = 0 -- Default orientation
+                    end
+                end
+            else
+                -- Interior of the structure is floor
+                map:setTile(x, y, "floor")
+            end
         end
     end
     
-    -- Create a custom player entity with fixed movement handling
-    local player = Player:new(map, 1, 1)
+    -- 2. Center 5x5 square of floor tiles
+    local centerX = math.floor(map.width / 2) - 2
+    local centerY = math.floor(map.height / 2) - 2
     
+    for x = centerX, centerX + 4 do
+        for y = centerY, centerY + 4 do
+            map:setTile(x, y, "floor")
+        end
+    end
+    
+    -- 3. Bottom right: 1x5 line of wall tiles with NPC behind it
+    local rightX = map.width - 5
+    local rightY = map.height - 5
+    
+    -- Place the wall line
+    for y = rightY, rightY + 4 do
+        map:setTile(rightX, y, "wall")
+    end
+    
+    -- Create a player entity
+    local player = Player:new(map, centerX + 2, centerY + 2)
     map:addEntity(player)
     game.player = player
-    print("⭐ Added player at (1,1)")
     
-    -- Add an NPC at position C3 (3,3)
-    local npc = Player:new(map, 3, 3)
+    -- Add an NPC behind the wall line
+    local npc = Player:new(map, rightX + 1, rightY + 2)
     npc.isPlayerControlled = false
     npc.name = "NPC"
     npc.color = {0.8, 0.2, 0.2, 1} -- Red color
     npc.borderColor = {0.6, 0.1, 0.1, 1}
     map:addEntity(npc)
-    print("⭐ Added NPC at (3,3)")
     
     -- Apply sight extensions to map
-    print("⭐ Extending map with sight capabilities")
     MapSightExtension.extend(map)
     
-    -- Set wall height to 2 (fully blocks sight)
-    map:setTileHeight(2, 3, 2) -- Height 2 fully blocks sight
-    map:setTileObstruction(2, 3, 1.0) -- Walls fully obstruct
-    print("⭐ Set wall height to 2 and obstruction to 1.0")
+    -- Set all wall tiles to block sight
+    for x = 1, map.width do
+        for y = 1, map.height do
+            local tile = map:getTile(x, y)
+            if tile and tile.type == "wall" then
+                map:setTileHeight(x, y, 2) -- Height 2 fully blocks sight
+                map:setTileObstruction(x, y, 1.0) -- Walls fully obstruct
+            end
+        end
+    end
     
     -- Add sight capability to player
     EntitySightExtension.extend(player)
     player.hasSight = true
     player.height = 1.0
     player.perception = 1.0
-    print("⭐ Extended player with sight capabilities")
     
     -- Add sight capability to NPC
     EntitySightExtension.extend(npc)
@@ -86,7 +118,6 @@ function TestMap.create(game)
     local sightManager = SightManager:new(map)
     sightManager.debug = true -- Enable debug output
     map.sightManager = sightManager
-    print("⭐ Created and attached sight manager to map")
     
     -- Store the player reference in the map for easy access
     map.player = player
@@ -297,12 +328,6 @@ function TestMap.create(game)
             originalDraw(self)
         end
         
-        -- Draw bright yellow test border
-        love.graphics.setColor(1, 1, 0, 1) -- Yellow
-        love.graphics.setLineWidth(4)
-        love.graphics.rectangle("line", 0, 0, self.width * self.grid.tileSize, self.height * self.grid.tileSize)
-        love.graphics.setLineWidth(1)
-        
         -- Draw occlusion overlays if sight manager is attached
         if self.sightManager then
             -- IMPORTANT: Force transition to be active when player is moving
@@ -341,26 +366,10 @@ function TestMap.create(game)
                 self.sightManager:drawAmbientOcclusion()
             end
             
-            -- Draw debug text
-            love.graphics.setColor(1, 0, 0, 1) -- Red
-            love.graphics.print("Ambient Occlusion Test Map", 10, 10)
-            love.graphics.print("Player: (" .. self.player.gridX .. "," .. self.player.gridY .. ")", 10, 30)
-            
-            -- Debug transition state
-            if self.isTransitioning then
-                love.graphics.setColor(0, 1, 0, 1) -- Green
-                love.graphics.print("Transition: " .. string.format("%.2f", self.transitionProgress), 10, 50)
-                love.graphics.print("Moving: " .. tostring(self.player.isMoving), 10, 70)
-                
-                -- Debug visibility maps
-                local hasOld = self.oldVisibilityMap ~= nil
-                local hasNew = self.newVisibilityMap ~= nil
-                love.graphics.print("Old Map: " .. tostring(hasOld), 10, 90)
-                love.graphics.print("New Map: " .. tostring(hasNew), 10, 110)
-            else
-                love.graphics.setColor(1, 1, 0, 1) -- Yellow
-                love.graphics.print("No Transition Active", 10, 50)
-            end
+            -- Draw map title
+            love.graphics.setColor(0, 0, 0, 1) -- Black
+            love.graphics.print("A Random Procedural Test Map", 10, 10)
+            love.graphics.print("No Translation", 10, 30)
             love.graphics.setColor(1, 1, 1, 1)
         else
             love.graphics.setColor(1, 0, 0, 1) -- Red

@@ -99,7 +99,7 @@ local tileConfigs = {
     },
     wall = {
         name = "Wall",
-        color = {0.93, 0.93, 0.93, 1}, -- White (same as floor)
+        color = {0, 0, 0, 0}, -- Fully transparent background
         borderColor = {0, 0, 0, 0}, -- Transparent border (no border)
         borderWidth = 0,
         walkable = false, -- Walls are never walkable
@@ -124,8 +124,8 @@ local tileConfigs = {
                 end
             end
             
-            -- Add a subtle gap between tiles (2 pixels)
-            local gap = 2
+            -- No gap for wall tiles to make them fully transparent
+            local gap = 0
             
             -- Draw the wall sprite if image loaded successfully
             if self.wallImage and self.wallImage ~= false then
@@ -142,12 +142,12 @@ local tileConfigs = {
                 -- Draw the image with a small gap
                 love.graphics.draw(self.wallImage, x + gap/2, y + gap/2, 0, scaleX, scaleY)
             else
-                -- Fallback rendering if image failed to load
-                love.graphics.setColor(0.6, 0.6, 0.6, 1) -- Dark gray
+                -- Fallback rendering if image failed to load - still transparent
+                love.graphics.setColor(0.6, 0.6, 0.6, 0.5) -- Semi-transparent dark gray
                 love.graphics.rectangle("fill", x + gap/2, y + gap/2, tileSize - gap, tileSize - gap)
                 
-                -- Add a simple wall pattern
-                love.graphics.setColor(0.4, 0.4, 0.4, 1) -- Darker gray for pattern
+                -- Add a simple wall pattern - semi-transparent
+                love.graphics.setColor(0.4, 0.4, 0.4, 0.5) -- Semi-transparent darker gray for pattern
                 love.graphics.rectangle("fill", x + gap/2 + 2, y + gap/2 + 2, tileSize - gap - 4, tileSize - gap - 4)
             end
         end

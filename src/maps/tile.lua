@@ -19,6 +19,11 @@ local tileTypes = {
     grass = {
         color = {0.2, 0.7, 0.2, 1},  -- Green
         walkable = true
+    },
+    ground = {
+        color = {0.93, 0.93, 0.93, 1},  -- #eeeeee
+        walkable = true,
+        flavorText = "Lorem Ipsum"
     }
 }
 
@@ -55,7 +60,17 @@ function Tile:draw()
     love.graphics.rectangle("fill", self.x, self.y, self.tileSize, self.tileSize)
     
     -- Draw the tile borders based on type
-    if self.type == "floor" then
+    if self.type == "ground" then
+        -- Draw a black dot in the middle
+        love.graphics.setColor(0, 0, 0, 1) -- Black
+        local dotSize = 4
+        love.graphics.circle("fill", self.x + self.tileSize/2, self.y + self.tileSize/2, dotSize)
+        
+        -- Subtle border
+        love.graphics.setColor(0.85, 0.85, 0.85, 1)
+        love.graphics.setLineWidth(1)
+        love.graphics.rectangle("line", self.x, self.y, self.tileSize, self.tileSize)
+    elseif self.type == "floor" then
         -- Subtle border for floor tiles
         love.graphics.setColor(0.85, 0.85, 0.85, 1)  -- Slightly darker than the fill
         love.graphics.setLineWidth(1)

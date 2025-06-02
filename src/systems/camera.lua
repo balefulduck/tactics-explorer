@@ -143,6 +143,23 @@ function Camera:update(dt)
     end
 end
 
+function Camera:attach()
+    love.graphics.push()
+    
+    -- First translate to the board position in the newspaper layout
+    love.graphics.translate(self.boardX, self.boardY)
+    
+    -- Then apply the camera transformations within the board
+    love.graphics.translate(self.boardWidth/2, self.boardHeight/2)
+    love.graphics.scale(self.scale)
+    love.graphics.rotate(self.rotation)
+    love.graphics.translate(-self.x, -self.y)
+end
+
+function Camera:detach()
+    love.graphics.pop()
+end
+
 function Camera:set()
     love.graphics.push()
     
@@ -261,6 +278,40 @@ end
 -- Stop panning the camera
 function Camera:stopPan()
     self.isPanning = false
+    
+    -- If we have a target, temporarily clear it to prevent snap-back
+    -- and update the target position to match current camera position
+    if self.target then
+        -- Store current target
+        local currentTarget = self.target
+        
+        -- Temporarily clear target to prevent snap-back
+        self.target = nil
+        
+        -- Center the board on the current view
+        local centerX = self.x + self.boardWidth / (2 * self.scale)
+        local centerY = self.y + self.boardHeight / (2 * self.scale)
+        
+        -- Update the stored target position to match current camera position
+        if currentTarget.grid then
+            -- Convert center position to grid coordinates
+            local gridSize = currentTarget.grid.tileSize
+            currentTarget.x = centerX - gridSize / 2
+            currentTarget.y = centerY - gridSize / 2
+        end
+    end
+    
+    return true
+end
+
+-- Set zoom to a specific level
+function Camera:setZoom(zoomLevel)
+    -- Clamp zoom level to min/max values
+    zoomLevel = math.max(self.minZoom, math.min(zoomLevel, self.maxZoom))
+    
+    -- Set the target scale for smooth transition
+    self.targetScale = zoomLevel
+    
     return true
 end
 
