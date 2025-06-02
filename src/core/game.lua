@@ -308,7 +308,6 @@ function Game:drawBoardFrame()
     end
     
     -- Reset color and line width
-    love.graphics.setColor(1, 1, 1, 1)
     love.graphics.setLineWidth(1)
 end
 
@@ -322,40 +321,46 @@ function Game:drawBoardSection()
         self.layout.board.height
     )
     
-    -- Set up camera transformation
+    -- Set the camera to the board position
+    self.camera:setBoardViewport(
+        self.layout.board.x,
+        self.layout.board.y,
+        self.layout.board.width,
+        self.layout.board.height
+    )
+    
+    -- Apply camera transformations
     self.camera:set()
     
-    -- Draw board frame
-    self:drawBoardFrame()
-    
-    -- Draw map (which draws all tiles and entities)
-    self.currentMap:draw()
-    
-    -- Draw player
-    self.player:draw()
-    
-    -- Draw examination cursor if in examination mode
-    if self.examinationMode then
-        self:drawExaminationCursor()
+    -- Draw the map
+    if self.currentMap then
+        self.currentMap:draw()
     end
     
-    -- Reset camera
+    -- Draw grid for debugging if needed
+    if self.debug then
+        self:drawBoardFrame()
+    end
+    
+    -- Reset camera transformations
     self.camera:unset()
     
-    -- Disable scissor/clipping
+    -- Reset scissor
     love.graphics.setScissor()
     
-        -- Draw board title
-    local boardTitle = "TACTICS EXPLORER - ROOM VIEW"
-    love.graphics.setColor(0.2, 0.2, 0.2, 1) -- Dark text
-    love.graphics.setFont(love.graphics.newFont("assets/fonts/Tomorrow/Tomorrow-Bold.ttf", 14))
-    love.graphics.print(boardTitle, self.layout.board.x + 10, self.layout.board.y + 10)
-    
-    -- Draw board border (newspaper column style)
-    love.graphics.setColor(0.6, 0.55, 0.5, 0.8) -- Darker paper color
+    -- Draw board border
+    love.graphics.setColor(0.2, 0.2, 0.2, 0.8)
     love.graphics.setLineWidth(1)
     love.graphics.rectangle("line", self.layout.board.x, self.layout.board.y, 
                            self.layout.board.width, self.layout.board.height)
+    
+    -- Display zoom level indicator if not at default zoom
+    if math.abs(self.camera.scale - 1.0) > 0.01 then
+        love.graphics.setColor(1, 1, 1, 0.7)
+        love.graphics.print(string.format("Zoom: %.1fx", self.camera.scale), 
+                          self.layout.board.x + 10, 
+                          self.layout.board.y + self.layout.board.height - 30)
+    end
     
     -- Reset color
     love.graphics.setColor(1, 1, 1, 1)
@@ -1038,6 +1043,12 @@ function Game:mousepressed(x, y, button)
     end
     
     if self.state == "playing" then
+        -- Handle middle mouse button for panning
+        if button == 3 then  -- Middle mouse button
+            self.camera:startPan(x, y)
+            return
+        end
+        
         -- Convert screen coordinates to world coordinates
         local worldX, worldY = self.camera:screenToWorld(x, y)
         
@@ -1061,7 +1072,13 @@ function Game:mousereleased(x, y, button)
         return
     end
     
-    if self.state == "editor" then
+    if self.state == "playing" then
+        -- Stop panning when middle mouse button is released
+        if button == 3 then  -- Middle mouse button
+            self.camera:stopPan()
+            return
+        end
+    elseif self.state == "editor" then
         -- Pass mouse events to the editor
         self.editorMode:mousereleased(x, y, button)
     end
@@ -1071,6 +1088,10 @@ function Game:wheelmoved(x, y)
     if self.state == "editor" then
         -- Pass wheel events to the editor for zooming
         self.editorMode:wheelmoved(x, y)
+    elseif self.state == "playing" then
+        -- Handle zooming in normal gameplay
+        local mouseX, mouseY = love.mouse.getPosition()
+        self.camera:zoomAt(mouseX, mouseY, y)
     end
 end
 
@@ -1080,7 +1101,10 @@ function Game:mousemoved(x, y, dx, dy)
         return
     end
     
-    if self.state == "editor" then
+    if self.state == "playing" then
+        -- Update camera panning if active
+        self.camera:updatePan(x, y)
+    elseif self.state == "editor" then
         -- Pass mouse movement to editor if needed
         -- self.editorMode:mousemoved(x, y, dx, dy)
     end

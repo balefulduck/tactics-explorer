@@ -16,6 +16,18 @@ function Camera:new(width, height)
     self.smoothing = 0.1  -- Lower = smoother camera (0-1)
     self.target = nil
     
+    -- Zoom settings
+    self.minZoom = 0.25
+    self.maxZoom = 2.0
+    self.zoomStep = 0.05  -- Smaller step for smoother zooming
+    self.targetScale = 1.0  -- Target scale for smooth transitions
+    self.zoomSmoothing = 0.15  -- Smoothing factor for zoom transitions
+    
+    -- Panning settings
+    self.isPanning = false
+    self.lastMouseX = 0
+    self.lastMouseY = 0
+    
     -- Board viewport settings (will be updated by game)
     self.boardX = 0
     self.boardY = 0
@@ -30,7 +42,17 @@ function Camera:setTarget(target)
 end
 
 function Camera:update(dt)
-    if self.target then
+    -- Smooth zoom transition
+    if self.scale ~= self.targetScale then
+        self.scale = self.scale + (self.targetScale - self.scale) * self.zoomSmoothing * (60 * dt)
+        
+        -- Snap to target scale if very close to avoid floating point issues
+        if math.abs(self.scale - self.targetScale) < 0.001 then
+            self.scale = self.targetScale
+        end
+    end
+    
+    if self.target and not self.isPanning then
         -- Calculate center position of target
         local targetX = self.target.x + self.target.grid.tileSize / 2
         local targetY = self.target.y + self.target.grid.tileSize / 2
@@ -113,6 +135,79 @@ function Camera:setBoardViewport(x, y, width, height)
     self.boardY = y
     self.boardWidth = width
     self.boardHeight = height
+end
+
+-- Zoom the camera at a specific screen position
+function Camera:zoomAt(x, y, amount)
+    -- Convert screen coordinates to board-relative coordinates
+    local boardX = x - self.boardX
+    local boardY = y - self.boardY
+    
+    -- Only zoom if mouse is over the board area
+    if boardX >= 0 and boardX <= self.boardWidth and
+       boardY >= 0 and boardY <= self.boardHeight then
+        
+        -- Calculate world position before zoom
+        local worldX, worldY = self:screenToWorld(x, y)
+        
+        -- Calculate new target scale
+        local oldTargetScale = self.targetScale
+        if amount > 0 then
+            -- Zoom in
+            self.targetScale = math.min(self.maxZoom, self.targetScale + self.zoomStep)
+        elseif amount < 0 then
+            -- Zoom out
+            self.targetScale = math.max(self.minZoom, self.targetScale - self.zoomStep)
+        end
+        
+        -- Only adjust position if scale actually changed
+        if oldTargetScale ~= self.targetScale then
+            -- Calculate what the world position would be after the zoom
+            local newWorldX = (boardX / self.targetScale) + self.x
+            local newWorldY = (boardY / self.targetScale) + self.y
+            
+            -- Adjust camera position to keep the point under cursor in same position
+            self.x = self.x + (worldX - newWorldX)
+            self.y = self.y + (worldY - newWorldY)
+        end
+        
+        return true
+    end
+    
+    return false
+end
+
+-- Start panning the camera
+function Camera:startPan(x, y)
+    self.isPanning = true
+    self.lastMouseX = x
+    self.lastMouseY = y
+    return true
+end
+
+-- Update camera panning
+function Camera:updatePan(x, y)
+    if self.isPanning then
+        -- Calculate the movement in screen space
+        local dx = x - self.lastMouseX
+        local dy = y - self.lastMouseY
+        
+        -- Move the camera (dividing by scale to account for zoom level)
+        self.x = self.x - dx / self.scale
+        self.y = self.y - dy / self.scale
+        
+        -- Update last mouse position
+        self.lastMouseX = x
+        self.lastMouseY = y
+        return true
+    end
+    return false
+end
+
+-- Stop panning the camera
+function Camera:stopPan()
+    self.isPanning = false
+    return true
 end
 
 return Camera
