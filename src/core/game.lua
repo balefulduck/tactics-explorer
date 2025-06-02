@@ -634,6 +634,9 @@ function Game:keypressed(key)
     end
     
     if self.state == "playing" then
+        -- Check if shift is being held (for direction change)
+        local isShiftHeld = love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift")
+        
         -- If in examination mode
         if self.examinationMode then
             -- Movement controls for cursor
@@ -679,7 +682,47 @@ function Game:keypressed(key)
             end
             
             if dx ~= 0 or dy ~= 0 then
-                self.player:move(dx, dy)
+                if isShiftHeld then
+                    -- Change direction without moving (costs 25 TU)
+                    local newDirection = nil
+                    
+                    if dx == 1 and dy == 0 then
+                        newDirection = 0     -- East
+                    elseif dx == 0 and dy == 1 then
+                        newDirection = 1     -- South
+                    elseif dx == -1 and dy == 0 then
+                        newDirection = 2     -- West
+                    elseif dx == 0 and dy == -1 then
+                        newDirection = 3     -- North
+                    end
+                    
+                    if newDirection ~= nil and self.player.facingDirection ~= newDirection then
+                        print("Changing direction to " .. newDirection)
+                        
+                        -- Use the time system to queue the direction change action
+                        local ActionSystem = require("src.systems.time.actionSystem")
+                        local directionAction = ActionSystem.ChangeDirectionAction:new(newDirection)
+                        
+                        -- Queue the action in the time system if available
+                        if self.timeManager then
+                            self.timeManager:queueAction(self.player, directionAction)
+                        else
+                            -- Fallback if time system not available
+                            self.player:changeDirection(newDirection)
+                        end
+                    end
+                else
+                    -- Normal movement (costs 25 TU)
+                    if self.timeManager then
+                        -- Use the time system to queue the movement action
+                        local ActionSystem = require("src.systems.time.actionSystem")
+                        local moveAction = ActionSystem.MoveAction:new(dx, dy)
+                        self.timeManager:queueAction(self.player, moveAction)
+                    else
+                        -- Fallback to direct movement if time system not available
+                        self.player:move(dx, dy)
+                    end
+                end
             end
             
             -- Toggle debug mode

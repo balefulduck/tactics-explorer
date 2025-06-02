@@ -237,10 +237,52 @@ end
 
 -- Export all action types
 ActionSystem.Action = Action
+-- Change Direction Action
+local ChangeDirectionAction = setmetatable({}, {__index = Action})
+ChangeDirectionAction.__index = ChangeDirectionAction
+
 ActionSystem.MoveAction = MoveAction
 ActionSystem.WaitAction = WaitAction
 ActionSystem.AttackAction = AttackAction
 ActionSystem.InteractAction = InteractAction
+ActionSystem.ChangeDirectionAction = ChangeDirectionAction
+
+function ChangeDirectionAction:new(direction, config)
+    config = config or {}
+    config.name = config.name or "Change Direction"
+    config.description = config.description or "Change facing direction without moving"
+    config.cost = config.cost or 25  -- Default cost for changing direction
+    config.priority = config.priority or 70  -- Just below movement priority
+    config.tags = config.tags or {"movement"}
+    
+    local self = Action.new(self, config)
+    
+    self.direction = direction -- 0=East, 1=South, 2=West, 3=North
+    
+    return self
+end
+
+function ChangeDirectionAction:execute(entity)
+    -- Change the entity's facing direction
+    if entity.changeDirection then
+        entity:changeDirection(self.direction)
+    else
+        -- Fallback for entities without a changeDirection method
+        if entity.facingDirection ~= nil then
+            entity.facingDirection = self.direction
+        end
+    end
+end
+
+function ChangeDirectionAction:canPerform(entity)
+    -- Check if entity has enough TUs
+    if not Action.canPerform(self, entity) then
+        return false
+    end
+    
+    -- Check if entity can change direction
+    return entity.facingDirection ~= nil
+end
 
 -- Action cost constants (for easy tweaking)
 ActionSystem.COSTS = {
@@ -248,6 +290,7 @@ ActionSystem.COSTS = {
     ATTACK = 50,
     INTERACT = 30,
     WAIT = 10,
+    CHANGE_DIRECTION = 25,
     
     -- Add more action costs here as needed
     DASH = 40,

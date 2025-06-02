@@ -31,6 +31,10 @@ function SightManager:new(map)
         PERIPHERAL_ANGLE = 120,        -- Angle of peripheral vision (in degrees)
         PERIPHERAL_PENALTY = 0.7,      -- Detection chance multiplier in peripheral vision
         
+        -- Field of view settings
+        FIELD_OF_VIEW_ANGLE = 180,     -- Angle of field of view (in degrees)
+        DIRECTIONAL_VISION_ENABLED = true, -- Enable directional vision
+        
         -- Other factors
         DARKNESS_PENALTY = 0.5,        -- Detection chance multiplier in darkness
         MOVEMENT_BONUS = 0.2,          -- Detection chance bonus for moving targets
@@ -264,6 +268,77 @@ function math.sign(x)
     return x > 0 and 1 or (x < 0 and -1 or 0)
 end
 
+-- Check if a tile is within the field of view of an observer based on facing direction
+function SightManager:isInFieldOfView(observerX, observerY, targetX, targetY, facingDirection)
+    -- If directional vision is disabled, everything is in field of view
+    if not self.constants.DIRECTIONAL_VISION_ENABLED then
+        return true
+    end
+    
+    -- If no facing direction provided, assume the observer can see in all directions
+    if not facingDirection then
+        return true
+    end
+    
+    -- Skip check for the observer's own position
+    if observerX == targetX and observerY == targetY then
+        return true
+    end
+    
+    -- Direction vectors for each facing direction
+    local directionVectors = {
+        {x = 1, y = 0},  -- East (0)
+        {x = 0, y = 1},  -- South (1)
+        {x = -1, y = 0}, -- West (2)
+        {x = 0, y = -1}  -- North (3)
+    }
+    
+    -- Get the facing direction vector
+    local facingVector = directionVectors[facingDirection + 1]
+    
+    -- Calculate the vector from observer to target
+    local toTargetX = targetX - observerX
+    local toTargetY = targetY - observerY
+    
+    -- For debugging
+    -- print(string.format("Checking FOV: observer(%d,%d), target(%d,%d), facing=%d", 
+    --                     observerX, observerY, targetX, targetY, facingDirection))
+    
+    -- For grid-based calculation, we can simplify by checking if the target is in the right half-plane
+    -- For East (0): x > 0 or (x == 0 and y == 0)
+    -- For South (1): y > 0 or (x == 0 and y == 0)
+    -- For West (2): x < 0 or (x == 0 and y == 0)
+    -- For North (3): y < 0 or (x == 0 and y == 0)
+    
+    if facingDirection == 0 then -- East
+        return toTargetX > 0 or (toTargetX == 0 and toTargetY == 0)
+    elseif facingDirection == 1 then -- South
+        return toTargetY > 0 or (toTargetX == 0 and toTargetY == 0)
+    elseif facingDirection == 2 then -- West
+        return toTargetX < 0 or (toTargetX == 0 and toTargetY == 0)
+    elseif facingDirection == 3 then -- North
+        return toTargetY < 0 or (toTargetX == 0 and toTargetY == 0)
+    end
+    
+    -- Fallback to dot product method if needed
+    -- Normalize the vector (if not zero length)
+    local length = math.sqrt(toTargetX * toTargetX + toTargetY * toTargetY)
+    if length > 0 then
+        toTargetX = toTargetX / length
+        toTargetY = toTargetY / length
+    else
+        -- Target is at the same position as observer
+        return true
+    end
+    
+    -- Calculate the dot product between the facing vector and the target vector
+    local dotProduct = facingVector.x * toTargetX + facingVector.y * toTargetY
+    
+    -- For 180-degree field of view, the dot product should be >= 0
+    -- (cosine of 90 degrees is 0)
+    return dotProduct >= 0
+end
+
 -- Get the obstruction factor for a specific tile
 function SightManager:getObstructionFactor(x, y)
     -- Default partial obstruction
@@ -458,8 +533,11 @@ function SightManager:updateAllSight()
         self:updateWallCache()
     end
     
-    -- Check if player position has changed
+    -- Check if player position or facing direction has changed
     local playerMoved = false
+    local directionChanged = false
+    
+    -- Check position change
     if not self.lastPlayerPos or 
        self.lastPlayerPos.x ~= player.gridX or 
        self.lastPlayerPos.y ~= player.gridY then
@@ -468,8 +546,17 @@ function SightManager:updateAllSight()
         print("Player moved to (" .. player.gridX .. "," .. player.gridY .. ")")
     end
     
-    -- Only cast shadows if the player has moved or we're forcing an update
-    if playerMoved then
+    -- Check direction change if directional vision is enabled
+    if self.constants.DIRECTIONAL_VISION_ENABLED and player.facingDirection ~= nil then
+        if not self.lastPlayerDirection or self.lastPlayerDirection ~= player.facingDirection then
+            directionChanged = true
+            self.lastPlayerDirection = player.facingDirection
+            print("Player changed direction to " .. player.facingDirection)
+        end
+    end
+    
+    -- Only cast shadows if the player has moved, changed direction, or we're forcing an update
+    if playerMoved or directionChanged then
         print("Casting shadows from " .. #self.wallCache .. " walls")
         
         -- Cast shadows from each wall in the cache
@@ -478,6 +565,29 @@ function SightManager:updateAllSight()
             local distToWall = math.sqrt((wall.x - player.gridX)^2 + (wall.y - player.gridY)^2)
             if distToWall <= 15 then -- Only process walls within 15 tiles
                 self:castShadow(player.gridX, player.gridY, wall.x, wall.y)
+            end
+        end
+        
+        -- Apply directional vision restriction if enabled
+        if self.constants.DIRECTIONAL_VISION_ENABLED and player.facingDirection ~= nil then
+            print("Applying directional vision restriction for direction: " .. player.facingDirection)
+            
+            -- Check each tile on the map
+            for x = 1, self.map.width do
+                for y = 1, self.map.height do
+                    -- Skip the player's position
+                    if x ~= player.gridX or y ~= player.gridY then
+                        -- If the tile is not in the player's field of view, mark it as not visible
+                        if not self:isInFieldOfView(player.gridX, player.gridY, x, y, player.facingDirection) then
+                            if self.visibilityMap[x] and self.visibilityMap[x][y] then
+                                -- Mark as not visible but keep explored status
+                                self.visibilityMap[x][y].visible = false
+                                -- Set maximum occlusion level
+                                self.visibilityMap[x][y].ambientOcclusion = self.constants.AMBIENT_OCCLUSION_LEVELS
+                            end
+                        end
+                    end
+                end
             end
         end
         
@@ -606,28 +716,56 @@ function SightManager:applyAllAmbientOcclusion(obsX, obsY)
     end
 end
 
--- Cast a shadow from a wall to create ambient occlusion using Bresenham's algorithm
-function SightManager:castShadow(obsX, obsY, wallX, wallY)
-    if not self.map then 
-        print("ERROR: No map in castShadow")
-        return 
+-- Cast shadows from walls to create ambient occlusion
+function SightManager:castShadow(observerX, observerY, wallX, wallY)
+    if not self.map or not self.visibilityMap then
+        return
     end
     
-    local mapWidth = self.map.width
-    local mapHeight = self.map.height
+    local mapWidth, mapHeight = self.map.width, self.map.height
     
-    -- Skip if wall is too far from observer (optimization)
-    local distToWall = math.sqrt((wallX - obsX)^2 + (wallY - obsY)^2)
+    -- Get the player's facing direction if available
+    local facingDirection = nil
+    local player = nil
+    
+    -- First check if there's a player reference in the map
+    if self.map.game and self.map.game.player then
+        player = self.map.game.player
+    else
+        -- Fallback to searching entities
+        for _, entity in ipairs(self.map.entities or {}) do
+            if entity.isPlayerControlled then
+                player = entity
+                break
+            end
+        end
+    end
+    
+    -- Get the player's facing direction if available
+    if player and player.facingDirection ~= nil then
+        facingDirection = player.facingDirection
+    end
+    
+    -- Calculate direction from observer to wall
+    local dirX = wallX - observerX
+    local dirY = wallY - observerY
+    
+    -- Calculate distance to wall
+    local distToWall = math.sqrt(dirX * dirX + dirY * dirY)
+    
+    -- Skip if wall is too far away
     if distToWall > 10 then
         return
     end
     
-    -- Calculate direction vector from observer to wall
-    local dirX = wallX - obsX
-    local dirY = wallY - obsY
+    -- Normalize direction vector
+    dirX = dirX / distToWall
+    dirY = dirY / distToWall
     
-    -- Calculate the shadow projection point (extend beyond the wall)
-    local maxShadowLength = 5 -- Reduced shadow length for more precise control
+    -- Maximum shadow length (decreases with distance to optimize performance)
+    local maxShadowLength = math.min(5, 10 - math.floor(distToWall / 2))
+    
+    -- Calculate shadow end point
     local shadowEndX = wallX + math.floor((dirX / distToWall) * maxShadowLength + 0.5)
     local shadowEndY = wallY + math.floor((dirY / distToWall) * maxShadowLength + 0.5)
     
@@ -647,27 +785,114 @@ function SightManager:castShadow(obsX, obsY, wallX, wallY)
         if i > 1 then
             local x, y = point.x, point.y
             
-            -- Calculate distance from wall (i-1 because we skip the first point)
-            local distFromWall = i - 1
+            -- Check if the point is within the player's field of view
+            if not self.constants.DIRECTIONAL_VISION_ENABLED or 
+               facingDirection == nil or 
+               self:isInFieldOfView(observerX, observerY, x, y, facingDirection) then
+                
+                -- Calculate distance from wall (i-1 because we skip the first point)
+                local distFromWall = i - 1
+                
+                -- Calculate occlusion level (decreases with distance from wall)
+                local occlusionLevel = math.max(0, maxLevel - distFromWall)
+                
+                -- Only apply occlusion if there's no direct line of sight
+                if not self:hasLineOfSight(observerX, observerY, x, y) then
+                    self:setOcclusion(x, y, occlusionLevel)
+                end
+            end
+        end
+    end
+    
+    -- Check for peeking around corners if enabled
+    if self.constants.CORNER_PEEK_ENABLED then
+        -- Check all 8 directions around the wall
+        local directions = {
+            {1, 0}, {1, 1}, {0, 1}, {-1, 1},
+            {-1, 0}, {-1, -1}, {0, -1}, {1, -1}
+        }
+        
+        for _, dir in ipairs(directions) do
+            local dx, dy = dir[1], dir[2]
             
-            -- Simplified occlusion level calculation: decreases by 1 for each tile away
-            local level = maxLevel - (distFromWall - 1)
+            -- Skip the direction back toward the observer
+            local backToObserver = {
+                math.sign(observerX - wallX),
+                math.sign(observerY - wallY)
+            }
             
-            -- Stop if we've reached zero occlusion
-            if level <= 0 then break end
-            
-            -- Check if there's a clear line of sight from observer to this point
-            -- If there is, don't apply occlusion
-            if not self:hasLineOfSight(obsX, obsY, x, y) then
-                -- Set occlusion at this point
-                self:setOcclusion(x, y, level)
+            if dx ~= backToObserver[1] or dy ~= backToObserver[2] then
+                -- Check tiles in this direction with decreasing occlusion
+                for dist = 1, maxShadowLength do
+                    local x = wallX + dx * dist
+                    local y = wallY + dy * dist
+                    
+                    -- Ensure coordinates are within map bounds
+                    if x >= 1 and x <= mapWidth and y >= 1 and y <= mapHeight then
+                        -- Check if the point is within the player's field of view
+                        if not self.constants.DIRECTIONAL_VISION_ENABLED or 
+                           facingDirection == nil or 
+                           self:isInFieldOfView(observerX, observerY, x, y, facingDirection) then
+                            
+                            -- Calculate occlusion level (decreases with distance)
+                            local occlusionLevel = math.max(0, maxLevel - dist)
+                            
+                            -- Only apply occlusion if there's no direct line of sight
+                            if occlusionLevel > 0 and not self:hasLineOfSight(observerX, observerY, x, y) then
+                                self:setOcclusion(x, y, occlusionLevel)
+                            end
+                        end
+                    else
+                        -- Stop if we've gone out of bounds
+                        break
+                    end
+                end
             end
         end
     end
 end
 
 -- Check if there's a clear line of sight between two points
-function SightManager:hasLineOfSight(x1, y1, x2, y2)
+function SightManager:hasLineOfSight(x1, y1, x2, y2, checkFacingDirection)
+    -- Default to checking facing direction unless explicitly disabled
+    if checkFacingDirection == nil then
+        checkFacingDirection = true
+    end
+    
+    -- If directional vision is enabled and we should check it,
+    -- make sure the target is within the player's field of view
+    if checkFacingDirection and self.constants.DIRECTIONAL_VISION_ENABLED then
+        -- Get the player's facing direction if available
+        local facingDirection = nil
+        local player = nil
+        
+        -- First check if there's a player reference in the map
+        if self.map.game and self.map.game.player then
+            player = self.map.game.player
+        else
+            -- Fallback to searching entities
+            for _, entity in ipairs(self.map.entities or {}) do
+                if entity.isPlayerControlled then
+                    player = entity
+                    break
+                end
+            end
+        end
+        
+        -- Get the player's facing direction if available
+        if player and player.facingDirection ~= nil then
+            facingDirection = player.facingDirection
+            
+            -- Only check field of view if observer is the player
+            if x1 == player.gridX and y1 == player.gridY then
+                -- If the target is not in the player's field of view, return false
+                if not self:isInFieldOfView(x1, y1, x2, y2, facingDirection) then
+                    return false
+                end
+            end
+        end
+    end
+    
     -- Get all tiles along the line
     local tiles = self:getLinePoints(x1, y1, x2, y2)
     
