@@ -480,6 +480,23 @@ function SightManager:updateAllSight()
                 self:castShadow(player.gridX, player.gridY, wall.x, wall.y)
             end
         end
+        
+        -- Clear occlusion for tiles with direct line of sight
+        -- This ensures open areas around the player are properly visible
+        for x = 1, self.map.width do
+            for y = 1, self.map.height do
+                -- Skip checking tiles too far from player (optimization)
+                local dist = math.sqrt((x - player.gridX)^2 + (y - player.gridY)^2)
+                if dist <= 10 then -- Only check tiles within reasonable distance
+                    -- If there's a direct line of sight, ensure no occlusion
+                    if self:hasLineOfSight(player.gridX, player.gridY, x, y) then
+                        if self.visibilityMap[x] and self.visibilityMap[x][y] then
+                            self.visibilityMap[x][y].ambientOcclusion = 0
+                        end
+                    end
+                end
+            end
+        end
     else
         print("Player hasn't moved, skipping shadow recalculation")
     end
@@ -639,43 +656,33 @@ function SightManager:castShadow(obsX, obsY, wallX, wallY)
             -- Stop if we've reached zero occlusion
             if level <= 0 then break end
             
-            -- Set occlusion at this point
-            self:setOcclusion(x, y, level)
-        end
-    end
-    
-    -- For each wall, also check diagonal sight lines to allow peeking around corners
-    -- These are the 8 possible directions to check from the wall
-    local directions = {
-        {1, 0}, {1, 1}, {0, 1}, {-1, 1}, 
-        {-1, 0}, {-1, -1}, {0, -1}, {1, -1}
-    }
-    
-    -- Direction from observer to wall
-    local mainDirX = math.sign(dirX)
-    local mainDirY = math.sign(dirY)
-    
-    for _, dir in ipairs(directions) do
-        -- Skip the direction that points back toward the observer
-        if not (dir[1] == -mainDirX and dir[2] == -mainDirY) then
-            -- Check up to 3 tiles in this direction
-            for dist = 1, 3 do
-                local checkX = wallX + dir[1] * dist
-                local checkY = wallY + dir[2] * dist
-                
-                -- Ensure we're within map bounds
-                if checkX >= 1 and checkX <= mapWidth and checkY >= 1 and checkY <= mapHeight then
-                    -- Calculate occlusion level based on distance
-                    local level = maxLevel - dist
-                    
-                    -- Only set occlusion if level is positive
-                    if level > 0 then
-                        self:setOcclusion(checkX, checkY, level)
-                    end
-                end
+            -- Check if there's a clear line of sight from observer to this point
+            -- If there is, don't apply occlusion
+            if not self:hasLineOfSight(obsX, obsY, x, y) then
+                -- Set occlusion at this point
+                self:setOcclusion(x, y, level)
             end
         end
     end
+end
+
+-- Check if there's a clear line of sight between two points
+function SightManager:hasLineOfSight(x1, y1, x2, y2)
+    -- Get all tiles along the line
+    local tiles = self:getLinePoints(x1, y1, x2, y2)
+    
+    -- Skip the first and last points (start and end)
+    for i = 2, #tiles - 1 do
+        local tile = tiles[i]
+        
+        -- Check if this tile is a wall or obstacle
+        local tileObj = self.map:getTile(tile.x, tile.y)
+        if tileObj and tileObj.tileType == "wall" then
+            return false -- Line of sight is blocked
+        end
+    end
+    
+    return true -- Clear line of sight
 end
 
 -- Helper function to set occlusion level in the visibility map
@@ -708,6 +715,31 @@ function SightManager:drawAmbientOcclusion(forceDebug)
     if not self.map or not self.map.grid then
         print("⚠️ Cannot draw ambient occlusion: no map or grid")
         return
+    end
+    
+    -- Only recalculate occlusion if player has moved
+    local player = nil
+    for _, entity in ipairs(self.map.entities or {}) do
+        if entity.isPlayerControlled then
+            player = entity
+            break
+        end
+    end
+    
+    if player then
+        local playerMoved = false
+        if not self.lastPlayerPos or 
+           self.lastPlayerPos.x ~= player.gridX or 
+           self.lastPlayerPos.y ~= player.gridY then
+            playerMoved = true
+            self.lastPlayerPos = {x = player.gridX, y = player.gridY}
+            
+            -- Reset occlusion and recalculate only when player moves
+            if playerMoved then
+                print("Player moved to (" .. player.gridX .. "," .. player.gridY .. "), recalculating occlusion")
+                self:updateAllSight()
+            end
+        end
     end
     
     -- Set default colors if they haven't been set
