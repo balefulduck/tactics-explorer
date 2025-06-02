@@ -148,6 +148,14 @@ function Game:update(dt)
         
         -- Update sight tweaking UI
         SightTweakIntegration.update(dt)
+        
+        -- Update zoom notification if active
+        if self.zoomNotification then
+            self.zoomNotification.timer = self.zoomNotification.timer - dt
+            if self.zoomNotification.timer <= 0 then
+                self.zoomNotification = nil
+            end
+        end
     elseif self.state == "editor" then
         -- Update editor mode
         self.editorMode:update(dt)
@@ -185,6 +193,18 @@ function Game:draw()
         
         -- Draw sight tweaking UI
         SightTweakIntegration.draw()
+        
+        -- Display zoom notification if active
+        if self.zoomNotification then
+            love.graphics.setColor(1, 1, 1, math.min(self.zoomNotification.timer, 1.0))
+            local font = love.graphics.getFont()
+            local textWidth = font:getWidth(self.zoomNotification.text)
+            love.graphics.print(
+                self.zoomNotification.text,
+                self.layout.board.x + (self.layout.board.width - textWidth) / 2,
+                self.layout.board.y + 40
+            )
+        end
     elseif self.state == "editor" then
         -- Draw editor mode
         self.editorMode:draw()
@@ -357,7 +377,7 @@ function Game:drawBoardSection()
     -- Display zoom level indicator if not at default zoom
     if math.abs(self.camera.scale - 1.0) > 0.01 then
         love.graphics.setColor(1, 1, 1, 0.7)
-        love.graphics.print(string.format("Zoom: %.1fx", self.camera.scale), 
+        love.graphics.print(string.format("Zoom: %.2fx", self.camera.scale), 
                           self.layout.board.x + 10, 
                           self.layout.board.y + self.layout.board.height - 30)
     end
@@ -366,6 +386,347 @@ function Game:drawBoardSection()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
+function Game:keypressed(key)
+    -- Debug output for key presses
+    print("Game keypressed: " .. key)
+    
+    -- Check if sight tweaking UI handles the key press
+    if key == "f7" then
+        print("F7 key detected in Game:keypressed")
+        if SightTweakIntegration.ui then
+            print("SightTweakIntegration.ui exists, toggling visibility")
+            SightTweakIntegration.ui:toggle()
+            return
+        else
+            print("SightTweakIntegration.ui does not exist")
+            -- Try to reinitialize
+            print("Attempting to reinitialize SightTweakIntegration")
+            SightTweakIntegration.init(self)
+            if SightTweakIntegration.ui then
+                print("Reinitialization successful, toggling visibility")
+                SightTweakIntegration.ui:toggle()
+                return
+            end
+        end
+    end
+    
+    -- Toggle editor mode with F2
+    if key == "f2" then
+        if self.state == "editor" then
+            self.editorMode:closeEditor()
+        else
+            self.editorMode:launchEditor()
+        end
+        return
+    end
+    
+    if self.state == "playing" then
+        -- Check if shift is being held (for direction change)
+        local isShiftHeld = love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift")
+        
+        -- If in examination mode
+        if self.examinationMode then
+            -- Movement controls for cursor
+            local dx, dy = 0, 0
+            
+            if key == "up" or key == "w" then
+                dy = -1
+            elseif key == "down" or key == "s" then
+                dy = 1
+            elseif key == "left" or key == "a" then
+                dx = -1
+            elseif key == "right" or key == "d" then
+                dx = 1
+            end
+            
+            if dx ~= 0 or dy ~= 0 then
+                -- Move the examination cursor
+                self:moveExaminationCursor(dx, dy)
+            end
+            
+            -- Exit examination mode with X key
+            if key == "x" then
+                self:toggleExaminationMode()
+            end
+            
+            -- Also exit with escape key
+            if key == "escape" then
+                self:toggleExaminationMode()
+            end
+        else
+            -- Normal gameplay mode
+            -- Movement controls for player
+            local dx, dy = 0, 0
+            
+            if key == "up" or key == "w" then
+                dy = -1
+            elseif key == "down" or key == "s" then
+                dy = 1
+            elseif key == "left" or key == "a" then
+                dx = -1
+            elseif key == "right" or key == "d" then
+                dx = 1
+            end
+            
+            if dx ~= 0 or dy ~= 0 then
+                if isShiftHeld then
+                    -- Change direction without moving (costs 25 TU)
+                    local newDirection = nil
+                    
+                    if dx == 1 and dy == 0 then
+                        newDirection = 0     -- East
+                    elseif dx == 0 and dy == 1 then
+                        newDirection = 1     -- South
+                    elseif dx == -1 and dy == 0 then
+                        newDirection = 2     -- West
+                    elseif dx == 0 and dy == -1 then
+                        newDirection = 3     -- North
+                    end
+                    
+                    if newDirection ~= nil and self.player.facingDirection ~= newDirection then
+                        print("Changing direction to " .. newDirection)
+                        
+                        -- Use the time system to queue the direction change action
+                        local ActionSystem = require("src.systems.time.actionSystem")
+                        local directionAction = ActionSystem.ChangeDirectionAction:new(newDirection)
+                        
+                        -- Queue the action in the time system if available
+                        if self.timeManager then
+                            self.timeManager:queueAction(self.player, directionAction)
+                        else
+                            -- Fallback if time system not available
+                            self.player:changeDirection(newDirection)
+                        end
+                    end
+                else
+                    -- Normal movement (costs 25 TU)
+                    if self.timeManager then
+                        -- Use the time system to queue the movement action
+                        local ActionSystem = require("src.systems.time.actionSystem")
+                        local moveAction = ActionSystem.MoveAction:new(dx, dy)
+                        self.timeManager:queueAction(self.player, moveAction)
+                    else
+                        -- Fallback to direct movement if time system not available
+                        self.player:move(dx, dy)
+                    end
+                end
+            end
+            
+            -- Toggle debug mode
+            if key == "f1" then
+                self.debug = not self.debug
+            end
+            
+            -- Interaction key
+            if key == "e" or key == "space" then
+                self:interact()
+            end
+            
+            -- Examination mode (X key)
+            if key == "x" then
+                self:toggleExaminationMode()
+            end
+            
+            -- Handle preset zoom levels with Z + number keys
+            if key == "z" then
+                self.zKeyPressed = true
+            elseif self.zKeyPressed and tonumber(key) and tonumber(key) >= 1 and tonumber(key) <= 5 then
+                -- Get the player entity
+                local player = self.currentMap and self.currentMap:getPlayer()
+                
+                if player then
+                    -- Apply preset zoom centered on player
+                    self.camera:zoomToPreset(tonumber(key), player)
+                    
+                    -- Show a brief notification about the zoom level
+                    local zoomLevel = self.camera.zoomPresets[tonumber(key)]
+                    self.zoomNotification = {
+                        text = string.format("Zoom: %.2fx", zoomLevel),
+                        timer = 1.5  -- Show for 1.5 seconds
+                    }
+                end
+            end
+        end
+    elseif self.state == "editor" then
+        -- Pass keypresses to the editor
+        self.editorMode:keypressed(key)
+    end
+end
+
+function Game:keyreleased(key)
+    if key == "z" then
+        self.zKeyPressed = false
+    end
+    
+    -- Handle key releases if needed
+end
+
+function Game:mousepressed(x, y, button)
+    -- Check if sight tweaking UI handles the mouse press
+    if SightTweakIntegration.mousepressed(x, y, button) then
+        return
+    end
+    
+    if self.state == "playing" then
+        -- Handle middle mouse button for panning
+        if button == 3 then  -- Middle mouse button
+            self.camera:startPan(x, y)
+            return
+        end
+        
+        -- Convert screen coordinates to world coordinates
+        local worldX, worldY = self.camera:screenToWorld(x, y)
+        
+        -- Convert world coordinates to grid coordinates
+        local gridX, gridY = self.grid:worldToGrid(worldX, worldY)
+        
+        -- Handle grid-based interactions
+        if button == 1 then  -- Left click
+            -- Example: Select a tile or move to it
+            print("Grid clicked: " .. gridX .. ", " .. gridY)
+        end
+    elseif self.state == "editor" then
+        -- Pass mouse events to the editor
+        self.editorMode:mousepressed(x, y, button)
+    end
+end
+
+function Game:mousereleased(x, y, button)
+    -- Check if sight tweaking UI handles the mouse release
+    if SightTweakIntegration.mousereleased(x, y, button) then
+        return
+    end
+    
+    if self.state == "playing" then
+        -- Stop panning when middle mouse button is released
+        if button == 3 then  -- Middle mouse button
+            self.camera:stopPan()
+            return
+        end
+    elseif self.state == "editor" then
+        -- Pass mouse events to the editor
+        self.editorMode:mousereleased(x, y, button)
+    end
+end
+
+function Game:wheelmoved(x, y)
+    if self.state == "editor" then
+        -- Pass wheel events to the editor for zooming
+        self.editorMode:wheelmoved(x, y)
+    elseif self.state == "playing" then
+        -- Handle zooming in normal gameplay
+        local mouseX, mouseY = love.mouse.getPosition()
+        self.camera:zoomAt(mouseX, mouseY, y)
+    end
+end
+
+function Game:mousemoved(x, y, dx, dy)
+    -- Check if sight tweaking UI handles the mouse movement
+    if SightTweakIntegration.mousemoved(x, y, dx, dy) then
+        return
+    end
+    
+    if self.state == "playing" then
+        -- Update camera panning if active
+        self.camera:updatePan(x, y)
+    elseif self.state == "editor" then
+        -- Pass mouse movement to editor if needed
+        -- self.editorMode:mousemoved(x, y, dx, dy)
+    end
+end
+
+function Game:textinput(text)
+    if self.state == "editor" then
+        -- Pass text input to the editor
+        self.editorMode:textinput(text)
+    end
+end
+
+function Game:loadTestMap()
+    -- Load the test map module
+    local TestMap = require("src.maps.testMap")
+    
+    -- Create the test map
+    self.currentMap = TestMap.create(self)
+    
+    -- The player is already created and added to the map in the TestMap.create function
+    -- and assigned to the game.player property
+    
+    print("Test map loaded successfully")
+    return true
+end
+
+function Game:loadMap(mapName)
+    if not mapName then return end
+    
+    -- Sanitize map name for filename
+    local safeMapName = mapName:gsub("[^%w_%-%.]" , "_")
+    if safeMapName == "" then safeMapName = "custom_map" end
+    
+    -- Load from file
+    local filename = "maps/" .. safeMapName .. ".json"
+    
+    if not love.filesystem.getInfo(filename) then
+        print("No saved map found: " .. filename)
+        return
+    end
+    
+    local mapJson, size = love.filesystem.read(filename)
+    
+    if not mapJson then
+        print("Failed to read map file: " .. filename)
+        return
+    end
+    
+    -- Parse JSON
+    local json = require("lib.json")
+    local mapData = json.decode(mapJson)
+    
+    if not mapData then
+        print("Failed to parse map data")
+        return
+    end
+    
+    -- Create a new map with the loaded dimensions
+    local width = mapData.width or 12
+    local height = mapData.height or 14
+    
+    -- Create a new grid and map
+    self.grid = Grid:new(self.tileSize)
+    self.currentMap = Map:new(self.grid, width, height)
+    
+    -- Load tiles
+    for y = 1, height do
+        for x = 1, width do
+            if mapData.tiles and mapData.tiles[y] and mapData.tiles[y][x] then
+                local tileData = mapData.tiles[y][x]
+                if tileData.isWindow then
+                    self.currentMap:setTile(x, y, "wall", {isWindow = true})
+                else
+                    self.currentMap:setTile(x, y, tileData.type)
+                end
+            else
+                -- Default to floor if no tile data
+                self.currentMap:setTile(x, y, "floor")
+            end
+        end
+    end
+    
+    -- Load entities
+    if mapData.entities then
+        for _, entityData in ipairs(mapData.entities) do
+            local entity = Furniture.create(entityData.type, self.grid, entityData.x, entityData.y)
+            if entity then
+                self.currentMap:addEntity(entity)
+            end
+        end
+    end
+    
+    -- Recalculate board scale
+    self:calculateBoardScale()
+    
+    print("Map loaded from " .. filename)
+end
 -- Draw the header section (newspaper headline)
 function Game:drawHeader()
     -- Draw header background (slightly darker paper for visual separation)
@@ -568,7 +929,7 @@ function Game:drawFooterSection()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
--- Calculate the appropriate scale for the board to fit in its container
+--- Calculate the appropriate scale for the board to fit in its container
 function Game:calculateBoardScale()
     -- Calculate the total map size in pixels
     local mapWidth = self.currentMap.width * self.grid.tileSize
@@ -604,602 +965,4 @@ function Game:calculateBoardScale()
     self.grid.scaledTileSize = self.grid.tileSize * scale
 end
 
-function Game:keypressed(key)
-    -- Debug output for key presses
-    print("Game keypressed: " .. key)
-    
-    -- Check if sight tweaking UI handles the key press
-    if key == "f7" then
-        print("F7 key detected in Game:keypressed")
-        if SightTweakIntegration.ui then
-            print("SightTweakIntegration.ui exists, toggling visibility")
-            SightTweakIntegration.ui:toggle()
-            return
-        else
-            print("SightTweakIntegration.ui does not exist")
-            -- Try to reinitialize
-            print("Attempting to reinitialize SightTweakIntegration")
-            SightTweakIntegration.init(self)
-            if SightTweakIntegration.ui then
-                print("Reinitialization successful, toggling visibility")
-                SightTweakIntegration.ui:toggle()
-                return
-            end
-        end
-    end
-    
-    -- Toggle editor mode with F2
-    if key == "f2" then
-        if self.state == "editor" then
-            self.editorMode:closeEditor()
-        else
-            self.editorMode:launchEditor()
-        end
-        return
-    end
-    
-    if self.state == "playing" then
-        -- Check if shift is being held (for direction change)
-        local isShiftHeld = love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift")
-        
-        -- If in examination mode
-        if self.examinationMode then
-            -- Movement controls for cursor
-            local dx, dy = 0, 0
-            
-            if key == "up" or key == "w" then
-                dy = -1
-            elseif key == "down" or key == "s" then
-                dy = 1
-            elseif key == "left" or key == "a" then
-                dx = -1
-            elseif key == "right" or key == "d" then
-                dx = 1
-            end
-            
-            if dx ~= 0 or dy ~= 0 then
-                -- Move the examination cursor
-                self:moveExaminationCursor(dx, dy)
-            end
-            
-            -- Exit examination mode with X key
-            if key == "x" then
-                self:toggleExaminationMode()
-            end
-            
-            -- Also exit with escape key
-            if key == "escape" then
-                self:toggleExaminationMode()
-            end
-        else
-            -- Normal gameplay mode
-            -- Movement controls for player
-            local dx, dy = 0, 0
-            
-            if key == "up" or key == "w" then
-                dy = -1
-            elseif key == "down" or key == "s" then
-                dy = 1
-            elseif key == "left" or key == "a" then
-                dx = -1
-            elseif key == "right" or key == "d" then
-                dx = 1
-            end
-            
-            if dx ~= 0 or dy ~= 0 then
-                if isShiftHeld then
-                    -- Change direction without moving (costs 25 TU)
-                    local newDirection = nil
-                    
-                    if dx == 1 and dy == 0 then
-                        newDirection = 0     -- East
-                    elseif dx == 0 and dy == 1 then
-                        newDirection = 1     -- South
-                    elseif dx == -1 and dy == 0 then
-                        newDirection = 2     -- West
-                    elseif dx == 0 and dy == -1 then
-                        newDirection = 3     -- North
-                    end
-                    
-                    if newDirection ~= nil and self.player.facingDirection ~= newDirection then
-                        print("Changing direction to " .. newDirection)
-                        
-                        -- Use the time system to queue the direction change action
-                        local ActionSystem = require("src.systems.time.actionSystem")
-                        local directionAction = ActionSystem.ChangeDirectionAction:new(newDirection)
-                        
-                        -- Queue the action in the time system if available
-                        if self.timeManager then
-                            self.timeManager:queueAction(self.player, directionAction)
-                        else
-                            -- Fallback if time system not available
-                            self.player:changeDirection(newDirection)
-                        end
-                    end
-                else
-                    -- Normal movement (costs 25 TU)
-                    if self.timeManager then
-                        -- Use the time system to queue the movement action
-                        local ActionSystem = require("src.systems.time.actionSystem")
-                        local moveAction = ActionSystem.MoveAction:new(dx, dy)
-                        self.timeManager:queueAction(self.player, moveAction)
-                    else
-                        -- Fallback to direct movement if time system not available
-                        self.player:move(dx, dy)
-                    end
-                end
-            end
-            
-            -- Toggle debug mode
-            if key == "f1" then
-                self.debug = not self.debug
-            end
-            
-            -- Interaction key
-            if key == "e" or key == "space" then
-                self:interact()
-            end
-            
-            -- Examination mode (X key)
-            if key == "x" then
-                self:toggleExaminationMode()
-            end
-        end
-    elseif self.state == "editor" then
-        -- Pass keypresses to the editor
-        self.editorMode:keypressed(key)
-    end
-end
-
-function Game:interact()
-    -- Get the tile in front of the player (based on facing direction)
-    -- For now, just check all adjacent tiles
-    local adjacentPositions = {
-        {x = self.player.gridX + 1, y = self.player.gridY},
-        {x = self.player.gridX - 1, y = self.player.gridY},
-        {x = self.player.gridX, y = self.player.gridY + 1},
-        {x = self.player.gridX, y = self.player.gridY - 1}
-    }
-    
-    for _, pos in ipairs(adjacentPositions) do
-        local entities = self.currentMap:getEntitiesAt(pos.x, pos.y)
-        
-        for _, entity in ipairs(entities) do
-            if entity.interactable then
-                local result = entity:interact()
-                
-                if result.success then
-                    -- Show interaction result
-                    self.ui:showMessage(result.message, 2)
-                    return true
-                end
-            end
-        end
-    end
-    
-    return false
-end
-
--- Toggle examination mode on/off
-function Game:toggleExaminationMode()
-    -- If we're entering examination mode
-    if not self.examinationMode then
-        -- Check if there's a single entity adjacent to the player
-        local adjacentEntities = self:getAdjacentEntities()
-        
-        if #adjacentEntities == 1 then
-            -- If there's exactly one entity, show its info directly without cursor mode
-            self:showEntityInfoDirect(adjacentEntities[1])
-            return
-        else
-            -- Otherwise, activate cursor mode
-            self.examinationMode = true
-            -- Initialize cursor at player position
-            self.examinationCursor.gridX = self.player.gridX
-            self.examinationCursor.gridY = self.player.gridY
-            -- Show info for whatever is at the cursor position
-            self:showEntityInfoAtCursor()
-            -- Show a helpful message
-            self.ui:showMessage("Examination mode active. Use WASD to move cursor, X to exit.", 3)
-        end
-    else
-        -- Exit examination mode
-        self.examinationMode = false
-        -- Hide the info screen
-        self.ui.infoScreen.visible = false
-        self.ui.infoScreen.targetEntity = nil
-        -- Show exit message
-        self.ui:showMessage("Exited examination mode.", 1)
-    end
-end
-
--- Move the examination cursor
-function Game:moveExaminationCursor(dx, dy)
-    if not self.examinationMode then return end
-    
-    -- Update cursor position
-    local newX = self.examinationCursor.gridX + dx
-    local newY = self.examinationCursor.gridY + dy
-    
-    -- Ensure cursor stays within map bounds
-    if newX >= 1 and newX <= self.currentMap.width and
-       newY >= 1 and newY <= self.currentMap.height then
-        self.examinationCursor.gridX = newX
-        self.examinationCursor.gridY = newY
-        
-        -- Update info display for the new position
-        self:showEntityInfoAtCursor()
-    end
-end
-
--- Show entity info for whatever is at the cursor position
-function Game:showEntityInfoAtCursor()
-    if not self.examinationMode then return end
-    
-    local x = self.examinationCursor.gridX
-    local y = self.examinationCursor.gridY
-    
-    -- Use the new unified examination system to get the most relevant object
-    local examinable = self.currentMap:getExaminableAt(x, y)
-    
-    if examinable then
-        -- Get standardized examination info from the object
-        local info = examinable:getExaminationInfo()
-        
-        -- Show the entity info using the existing method
-        self:showEntityInfoDirect(examinable)
-    else
-        -- If nothing examinable found, show generic floor info
-        self:showFloorTileInfo(x, y)
-    end
-end
-
--- Show floor tile info
-function Game:showFloorTileInfo(x, y)
-    -- Create a virtual entity for the floor tile
-    local floorTile = {
-        name = "Floor Tile",
-        type = "floor",
-        properties = {
-            dimensions = "1x1",
-            height = 0
-        },
-        flavorText = "Where would you be without the floor beneath your feet?",
-        x = x,
-        y = y,
-        gridX = x,
-        gridY = y,
-        width = 1,
-        height = 1
-    }
-    
-    -- Show info for this virtual entity
-    self:showEntityInfoDirect(floorTile)
-end
-
--- Show entity info directly without checking adjacency
-function Game:showEntityInfoDirect(entity)
-    -- Make sure the entity has a name
-    if not entity.name then entity.name = "Unknown Object" end
-    -- Make sure the entity has a type
-    if not entity.type then entity.type = "furniture" end
-    -- Make sure the entity has properties
-    if not entity.properties then entity.properties = {} end
-    
-    -- Set info screen visibility
-    self.ui.infoScreen.visible = true
-    self.ui.infoScreen.targetEntity = entity
-    self.ui.infoScreen.alpha = 0 -- Start fade in
-end
-
--- Get all entities adjacent to the player
-function Game:getAdjacentEntities()
-    local adjacentPositions = {
-        {x = self.player.gridX + 1, y = self.player.gridY},
-        {x = self.player.gridX - 1, y = self.player.gridY},
-        {x = self.player.gridX, y = self.player.gridY + 1},
-        {x = self.player.gridX, y = self.player.gridY - 1}
-    }
-    
-    local adjacentEntities = {}
-    
-    for _, pos in ipairs(adjacentPositions) do
-        local entities = self.currentMap:getEntitiesAt(pos.x, pos.y)
-        for _, entity in ipairs(entities) do
-            -- Make sure entity has the necessary properties for display
-            if entity.name then
-                table.insert(adjacentEntities, entity)
-            end
-        end
-    end
-    
-    return adjacentEntities
-end
-
--- Legacy function for shift key compatibility
-function Game:showEntityInfo()
-    local adjacentEntities = self:getAdjacentEntities()
-    
-    -- If there's exactly one entity, show its info screen
-    if #adjacentEntities == 1 then
-        self:showEntityInfoDirect(adjacentEntities[1])
-        return true
-    elseif #adjacentEntities > 1 then
-        -- If there are multiple entities, show a message
-        self.ui:showMessage("Multiple objects nearby. Move closer to a specific object.", 2)
-        return false
-    else
-        -- If there are no entities, show a message
-        self.ui:showMessage("No objects nearby to inspect.", 2)
-        return false
-    end
-end
-
-function Game:keyreleased(key)
-    -- Handle key releases if needed
-end
-
--- Draw the examination cursor
-function Game:drawExaminationCursor()
-    if not self.examinationMode then return end
-    
-    -- Get world position of cursor
-    local x, y = self.grid:gridToWorld(self.examinationCursor.gridX, self.examinationCursor.gridY)
-    local tileSize = self.grid.tileSize
-    
-    -- Calculate center position and sizes
-    local centerX = x + tileSize / 2
-    local centerY = y + tileSize / 2
-    local eyeSize = tileSize * 0.7 -- Size of the eye
-    
-    -- Draw cursor background
-    love.graphics.setColor(self.examinationCursor.color)
-    love.graphics.rectangle("fill", x, y, tileSize, tileSize)
-    
-    -- Create eye icon with metallic effect
-    
-    -- Draw bold black border around the tile
-    love.graphics.setColor(self.examinationCursor.borderColor)
-    love.graphics.setLineWidth(4) -- Bold border
-    love.graphics.rectangle("line", x, y, tileSize, tileSize)
-    
-    -- Draw a custom eye symbol with metallic effect
-    -- For metallic effect, draw multiple layers with gradient
-    if self.examinationCursor.metallic then
-        -- Metallic gradient effect (darker to brighter red)
-        local gradientSteps = 5
-        for i = 1, gradientSteps do
-            local factor = i / gradientSteps
-            -- Create a metallic gradient from darker to brighter
-            local r = self.examinationCursor.eyeColor[1] * (0.7 + 0.5 * factor)
-            local g = self.examinationCursor.eyeColor[2] * (0.7 + 0.3 * factor)
-            local b = self.examinationCursor.eyeColor[3] * (0.7 + 0.3 * factor)
-            
-            -- Adjust position slightly for each layer to create depth
-            local offsetX = (gradientSteps - i) * 0.5
-            local offsetY = (gradientSteps - i) * 0.5
-            
-            love.graphics.setColor(r, g, b, self.examinationCursor.eyeColor[4])
-            
-            -- Draw a custom eye shape
-            local eyeWidth = tileSize * 0.6
-            local eyeHeight = tileSize * 0.3
-            
-            -- Draw the eye outline (oval)
-            love.graphics.ellipse(
-                "fill",
-                centerX - offsetX,
-                centerY - offsetY,
-                eyeWidth / 2,
-                eyeHeight / 2
-            )
-            
-            -- Draw the pupil (darker circle in the center)
-            love.graphics.setColor(0, 0, 0, 1)
-            love.graphics.circle(
-                "fill",
-                centerX - offsetX,
-                centerY - offsetY,
-                eyeHeight / 3
-            )
-        end
-    else
-        -- Simple version without metallic effect
-        love.graphics.setColor(self.examinationCursor.eyeColor)
-        
-        -- Draw a custom eye shape
-        local eyeWidth = tileSize * 0.6
-        local eyeHeight = tileSize * 0.3
-        
-        -- Draw the eye outline (oval)
-        love.graphics.ellipse(
-            "fill",
-            centerX,
-            centerY,
-            eyeWidth / 2,
-            eyeHeight / 2
-        )
-        
-        -- Draw the pupil (darker circle in the center)
-        love.graphics.setColor(0, 0, 0, 1)
-        love.graphics.circle(
-            "fill",
-            centerX,
-            centerY,
-            eyeHeight / 3
-        )
-    end
-    
-    -- Reset color, line width, and font
-    love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.setLineWidth(1)
-    love.graphics.setFont(love.graphics.getFont())
-end
-
-function Game:mousepressed(x, y, button)
-    -- Check if sight tweaking UI handles the mouse press
-    if SightTweakIntegration.mousepressed(x, y, button) then
-        return
-    end
-    
-    if self.state == "playing" then
-        -- Handle middle mouse button for panning
-        if button == 3 then  -- Middle mouse button
-            self.camera:startPan(x, y)
-            return
-        end
-        
-        -- Convert screen coordinates to world coordinates
-        local worldX, worldY = self.camera:screenToWorld(x, y)
-        
-        -- Convert world coordinates to grid coordinates
-        local gridX, gridY = self.grid:worldToGrid(worldX, worldY)
-        
-        -- Handle grid-based interactions
-        if button == 1 then  -- Left click
-            -- Example: Select a tile or move to it
-            print("Grid clicked: " .. gridX .. ", " .. gridY)
-        end
-    elseif self.state == "editor" then
-        -- Pass mouse events to the editor
-        self.editorMode:mousepressed(x, y, button)
-    end
-end
-
-function Game:mousereleased(x, y, button)
-    -- Check if sight tweaking UI handles the mouse release
-    if SightTweakIntegration.mousereleased(x, y, button) then
-        return
-    end
-    
-    if self.state == "playing" then
-        -- Stop panning when middle mouse button is released
-        if button == 3 then  -- Middle mouse button
-            self.camera:stopPan()
-            return
-        end
-    elseif self.state == "editor" then
-        -- Pass mouse events to the editor
-        self.editorMode:mousereleased(x, y, button)
-    end
-end
-
-function Game:wheelmoved(x, y)
-    if self.state == "editor" then
-        -- Pass wheel events to the editor for zooming
-        self.editorMode:wheelmoved(x, y)
-    elseif self.state == "playing" then
-        -- Handle zooming in normal gameplay
-        local mouseX, mouseY = love.mouse.getPosition()
-        self.camera:zoomAt(mouseX, mouseY, y)
-    end
-end
-
-function Game:mousemoved(x, y, dx, dy)
-    -- Check if sight tweaking UI handles the mouse movement
-    if SightTweakIntegration.mousemoved(x, y, dx, dy) then
-        return
-    end
-    
-    if self.state == "playing" then
-        -- Update camera panning if active
-        self.camera:updatePan(x, y)
-    elseif self.state == "editor" then
-        -- Pass mouse movement to editor if needed
-        -- self.editorMode:mousemoved(x, y, dx, dy)
-    end
-end
-
-function Game:textinput(text)
-    if self.state == "editor" then
-        -- Pass text input to the editor
-        self.editorMode:textinput(text)
-    end
-end
-
-function Game:loadTestMap()
-    -- Load the test map module
-    local TestMap = require("src.maps.testMap")
-    
-    -- Create the test map
-    self.currentMap = TestMap.create(self)
-    
-    -- The player is already created and added to the map in the TestMap.create function
-    -- and assigned to the game.player property
-    
-    print("Test map loaded successfully")
-    return true
-end
-
-function Game:loadMap(mapName)
-    if not mapName then return end
-    
-    -- Sanitize map name for filename
-    local safeMapName = mapName:gsub("[^%w_%-%.]" , "_")
-    if safeMapName == "" then safeMapName = "custom_map" end
-    
-    -- Load from file
-    local filename = "maps/" .. safeMapName .. ".json"
-    
-    if not love.filesystem.getInfo(filename) then
-        print("No saved map found: " .. filename)
-        return
-    end
-    
-    local mapJson, size = love.filesystem.read(filename)
-    
-    if not mapJson then
-        print("Failed to read map file: " .. filename)
-        return
-    end
-    
-    -- Parse JSON
-    local json = require("lib.json")
-    local mapData = json.decode(mapJson)
-    
-    if not mapData then
-        print("Failed to parse map data")
-        return
-    end
-    
-    -- Create a new map with the loaded dimensions
-    local width = mapData.width or 12
-    local height = mapData.height or 14
-    
-    -- Create a new grid and map
-    self.grid = Grid:new(self.tileSize)
-    self.currentMap = Map:new(self.grid, width, height)
-    
-    -- Load tiles
-    for y = 1, height do
-        for x = 1, width do
-            if mapData.tiles and mapData.tiles[y] and mapData.tiles[y][x] then
-                local tileData = mapData.tiles[y][x]
-                if tileData.isWindow then
-                    self.currentMap:setTile(x, y, "wall", {isWindow = true})
-                else
-                    self.currentMap:setTile(x, y, tileData.type)
-                end
-            else
-                -- Default to floor if no tile data
-                self.currentMap:setTile(x, y, "floor")
-            end
-        end
-    end
-    
-    -- Load entities
-    if mapData.entities then
-        for _, entityData in ipairs(mapData.entities) do
-            local entity = Furniture.create(entityData.type, self.grid, entityData.x, entityData.y)
-            if entity then
-                self.currentMap:addEntity(entity)
-            end
-        end
-    end
-    
-    -- Recalculate board scale
-    self:calculateBoardScale()
-    
-    print("Map loaded from " .. filename)
-end
 return Game

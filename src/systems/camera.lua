@@ -23,6 +23,28 @@ function Camera:new(width, height)
     self.targetScale = 1.0  -- Target scale for smooth transitions
     self.zoomSmoothing = 0.15  -- Smoothing factor for zoom transitions
     
+    -- Preset zoom levels
+    self.zoomPresets = {
+        0.25,  -- Z+1: Very zoomed out
+        0.5,   -- Z+2: Zoomed out
+        1.0,   -- Z+3: Default zoom
+        1.3,   -- Z+4: Slightly zoomed in
+        1.75   -- Z+5: Very zoomed in
+    }
+    
+    -- Transition timer for smooth preset zooming
+    self.zoomTransition = {
+        active = false,
+        duration = 0.2,  -- Transition duration in seconds
+        timer = 0,
+        startScale = 1.0,
+        endScale = 1.0,
+        startX = 0,
+        startY = 0,
+        endX = 0,
+        endY = 0
+    }
+    
     -- Panning settings
     self.isPanning = false
     self.lastMouseX = 0
@@ -42,7 +64,39 @@ function Camera:setTarget(target)
 end
 
 function Camera:update(dt)
-    -- Smooth zoom transition
+    -- Handle zoom transition if active
+    if self.zoomTransition.active then
+        self.zoomTransition.timer = self.zoomTransition.timer + dt
+        local progress = math.min(self.zoomTransition.timer / self.zoomTransition.duration, 1.0)
+        
+        -- Use smooth easing function (ease-out cubic)
+        local easedProgress = 1 - (1 - progress) * (1 - progress) * (1 - progress)
+        
+        -- Update scale and position based on transition progress
+        self.scale = self.zoomTransition.startScale + 
+                    (self.zoomTransition.endScale - self.zoomTransition.startScale) * easedProgress
+        
+        self.x = self.zoomTransition.startX + 
+               (self.zoomTransition.endX - self.zoomTransition.startX) * easedProgress
+        
+        self.y = self.zoomTransition.startY + 
+               (self.zoomTransition.endY - self.zoomTransition.startY) * easedProgress
+        
+        -- Update target scale to match current transition target
+        self.targetScale = self.zoomTransition.endScale
+        
+        -- End transition when complete
+        if progress >= 1.0 then
+            self.zoomTransition.active = false
+            self.scale = self.zoomTransition.endScale
+            self.x = self.zoomTransition.endX
+            self.y = self.zoomTransition.endY
+        end
+        
+        return -- Skip regular update when in transition
+    end
+    
+    -- Regular smooth zoom transition (for mouse wheel zooming)
     if self.scale ~= self.targetScale then
         self.scale = self.scale + (self.targetScale - self.scale) * self.zoomSmoothing * (60 * dt)
         
@@ -207,6 +261,43 @@ end
 -- Stop panning the camera
 function Camera:stopPan()
     self.isPanning = false
+    return true
+end
+
+-- Zoom to a specific preset level centered on the player
+function Camera:zoomToPreset(presetIndex, player)
+    if not player then return false end
+    
+    -- Validate preset index
+    if presetIndex < 1 or presetIndex > #self.zoomPresets then
+        return false
+    end
+    
+    -- Get target zoom level
+    local targetZoom = self.zoomPresets[presetIndex]
+    
+    -- Calculate player center position
+    local playerCenterX = player.x + player.width / 2
+    local playerCenterY = player.y + player.height / 2
+    
+    -- Calculate the board center in world coordinates
+    local boardCenterX = self.boardWidth / 2
+    local boardCenterY = self.boardHeight / 2
+    
+    -- Calculate the target camera position to center the player
+    local targetX = playerCenterX - (boardCenterX / targetZoom)
+    local targetY = playerCenterY - (boardCenterY / targetZoom)
+    
+    -- Set up the transition
+    self.zoomTransition.active = true
+    self.zoomTransition.timer = 0
+    self.zoomTransition.startScale = self.scale
+    self.zoomTransition.endScale = targetZoom
+    self.zoomTransition.startX = self.x
+    self.zoomTransition.startY = self.y
+    self.zoomTransition.endX = targetX
+    self.zoomTransition.endY = targetY
+    
     return true
 end
 

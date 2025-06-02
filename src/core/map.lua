@@ -276,6 +276,16 @@ function Map:toggleTileActive(x, y)
 end
 
 -- Check if an entity can be placed at its current position
+-- Get the player entity from the map
+function Map:getPlayer()
+    for _, entity in ipairs(self.entities) do
+        if entity.type == "player" then
+            return entity
+        end
+    end
+    return nil
+end
+
 function Map:canPlaceEntity(entity)
     -- Make sure the entity is within map bounds
     if entity.gridX < 1 or entity.gridY < 1 or 
