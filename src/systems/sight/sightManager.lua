@@ -304,20 +304,21 @@ function SightManager:isInFieldOfView(observerX, observerY, targetX, targetY, fa
     -- print(string.format("Checking FOV: observer(%d,%d), target(%d,%d), facing=%d", 
     --                     observerX, observerY, targetX, targetY, facingDirection))
     
-    -- For grid-based calculation, we can simplify by checking if the target is in the right half-plane
-    -- For East (0): x > 0 or (x == 0 and y == 0)
-    -- For South (1): y > 0 or (x == 0 and y == 0)
-    -- For West (2): x < 0 or (x == 0 and y == 0)
-    -- For North (3): y < 0 or (x == 0 and y == 0)
+    -- For grid-based calculation, we need to check if the target is in the 180-degree field of view
+    -- This includes the half-plane in the facing direction plus the sides
+    -- For East (0): not strictly west of the player (x >= player.x)
+    -- For South (1): not strictly north of the player (y >= player.y)
+    -- For West (2): not strictly east of the player (x <= player.x)
+    -- For North (3): not strictly south of the player (y <= player.y)
     
     if facingDirection == 0 then -- East
-        return toTargetX > 0 or (toTargetX == 0 and toTargetY == 0)
+        return toTargetX >= 0 -- Can see everything to the east and directly to the sides
     elseif facingDirection == 1 then -- South
-        return toTargetY > 0 or (toTargetX == 0 and toTargetY == 0)
+        return toTargetY >= 0 -- Can see everything to the south and directly to the sides
     elseif facingDirection == 2 then -- West
-        return toTargetX < 0 or (toTargetX == 0 and toTargetY == 0)
+        return toTargetX <= 0 -- Can see everything to the west and directly to the sides
     elseif facingDirection == 3 then -- North
-        return toTargetY < 0 or (toTargetX == 0 and toTargetY == 0)
+        return toTargetY <= 0 -- Can see everything to the north and directly to the sides
     end
     
     -- Fallback to dot product method if needed
@@ -568,23 +569,42 @@ function SightManager:updateAllSight()
             end
         end
         
-        -- Apply directional vision restriction if enabled
-        if self.constants.DIRECTIONAL_VISION_ENABLED and player.facingDirection ~= nil then
-            print("Applying directional vision restriction for direction: " .. player.facingDirection)
-            
-            -- Check each tile on the map
-            for x = 1, self.map.width do
-                for y = 1, self.map.height do
-                    -- Skip the player's position
-                    if x ~= player.gridX or y ~= player.gridY then
-                        -- If the tile is not in the player's field of view, mark it as not visible
-                        if not self:isInFieldOfView(player.gridX, player.gridY, x, y, player.facingDirection) then
-                            if self.visibilityMap[x] and self.visibilityMap[x][y] then
-                                -- Mark as not visible but keep explored status
-                                self.visibilityMap[x][y].visible = false
-                                -- Set maximum occlusion level
-                                self.visibilityMap[x][y].ambientOcclusion = self.constants.AMBIENT_OCCLUSION_LEVELS
-                            end
+        -- Apply directional vision and proper occlusion
+        print("Applying directional vision and occlusion calculation")
+        
+        -- Check each tile on the map
+        for x = 1, self.map.width do
+            for y = 1, self.map.height do
+                -- Skip the player's position
+                if x ~= player.gridX or y ~= player.gridY then
+                    -- Initialize visibility if needed
+                    if not self.visibilityMap[x] then self.visibilityMap[x] = {} end
+                    if not self.visibilityMap[x][y] then 
+                        self.visibilityMap[x][y] = {visible = true, explored = true, ambientOcclusion = 0}
+                    end
+                    
+                    -- First check: Is the tile in the player's field of view?
+                    local inFieldOfView = true
+                    if self.constants.DIRECTIONAL_VISION_ENABLED and player.facingDirection ~= nil then
+                        inFieldOfView = self:isInFieldOfView(player.gridX, player.gridY, x, y, player.facingDirection)
+                    end
+                    
+                    -- Second check: Is there a clear line of sight to the tile?
+                    local hasLineOfSight = self:hasLineOfSight(player.gridX, player.gridY, x, y, false)
+                    
+                    -- Apply visibility based on both checks
+                    if not inFieldOfView or not hasLineOfSight then
+                        -- Mark as not visible but keep explored status
+                        self.visibilityMap[x][y].visible = false
+                        
+                        -- Set maximum occlusion level if not in field of view
+                        if not inFieldOfView then
+                            self.visibilityMap[x][y].ambientOcclusion = self.constants.AMBIENT_OCCLUSION_LEVELS
+                        end
+                        
+                        -- Set maximum occlusion level if blocked by wall
+                        if not hasLineOfSight then
+                            self.visibilityMap[x][y].ambientOcclusion = self.constants.AMBIENT_OCCLUSION_LEVELS
                         end
                     end
                 end
@@ -859,9 +879,28 @@ function SightManager:hasLineOfSight(x1, y1, x2, y2, checkFacingDirection)
         checkFacingDirection = true
     end
     
-    -- If directional vision is enabled and we should check it,
-    -- make sure the target is within the player's field of view
-    if checkFacingDirection and self.constants.DIRECTIONAL_VISION_ENABLED then
+    -- First check for walls blocking sight (this happens regardless of facing direction)
+    -- Get all tiles along the line
+    local tiles = self:getLinePoints(x1, y1, x2, y2)
+    
+    -- Skip the first and last points (start and end)
+    for i = 2, #tiles - 1 do
+        local tile = tiles[i]
+        
+        -- Check if this tile is a wall or obstacle
+        local tileObj = self.map:getTile(tile.x, tile.y)
+        if tileObj and tileObj.tileType == "wall" then
+            return false -- Line of sight is blocked by a wall
+        end
+    end
+    
+    -- If we're not checking facing direction, we're done
+    if not checkFacingDirection then
+        return true -- Clear line of sight through walls
+    end
+    
+    -- If directional vision is enabled, check if the target is in the field of view
+    if self.constants.DIRECTIONAL_VISION_ENABLED then
         -- Get the player's facing direction if available
         local facingDirection = nil
         local player = nil
@@ -887,23 +926,9 @@ function SightManager:hasLineOfSight(x1, y1, x2, y2, checkFacingDirection)
             if x1 == player.gridX and y1 == player.gridY then
                 -- If the target is not in the player's field of view, return false
                 if not self:isInFieldOfView(x1, y1, x2, y2, facingDirection) then
-                    return false
+                    return false -- Not in field of view
                 end
             end
-        end
-    end
-    
-    -- Get all tiles along the line
-    local tiles = self:getLinePoints(x1, y1, x2, y2)
-    
-    -- Skip the first and last points (start and end)
-    for i = 2, #tiles - 1 do
-        local tile = tiles[i]
-        
-        -- Check if this tile is a wall or obstacle
-        local tileObj = self.map:getTile(tile.x, tile.y)
-        if tileObj and tileObj.tileType == "wall" then
-            return false -- Line of sight is blocked
         end
     end
     
